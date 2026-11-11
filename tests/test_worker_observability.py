@@ -95,7 +95,8 @@ def test_safe_job_log_path_rejects_escape(tmp_path: Path) -> None:
 
 def test_status_fragment_requires_login(client: TestClient) -> None:
     resp = client.get("/issues/1/status-fragment", follow_redirects=False)
-    assert resp.status_code in {303, 401, 403, 302}
+    assert resp.status_code == 401
+    assert "使用管理员账号登录" not in resp.text
 
 
 def test_status_fragment_contains_fields(client: TestClient, db: Session) -> None:

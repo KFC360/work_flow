@@ -86,19 +86,32 @@
 {% if polling %}
 <script>
 (function () {
+  function sessionExpired() {
+    clearInterval(timer);
+    alert('会话已失效，请重新登录');
+    window.location = '/login';
+  }
   var timer = setInterval(function () {
-    fetch('/issues/{{ issue.id }}/status-fragment', { credentials: 'same-origin' })
+    fetch('/issues/{{ issue.id }}/status-fragment', {
+      credentials: 'same-origin',
+      redirect: 'manual',
+      headers: { 'Accept': 'text/html', 'X-Requested-With': 'fetch' },
+    })
       .then(function (r) {
-        if (r.status === 401) {
-          clearInterval(timer);
-          alert('会话已失效，请重新登录');
-          window.location = '/login';
+        if (r.type === 'opaqueredirect' || r.status === 401 || r.status === 303 || r.status === 302) {
+          sessionExpired();
           return null;
         }
+        if (!r.ok) return null;
         return r.text();
       })
       .then(function (html) {
         if (!html) return;
+        // Never inject a full login page into the metadata panel.
+        if (html.indexOf('name="password"') !== -1 || html.indexOf('action="/login"') !== -1) {
+          sessionExpired();
+          return;
+        }
         var box = document.getElementById('issue-status');
         if (box) box.innerHTML = html;
         var live = document.getElementById('issue-log-live');

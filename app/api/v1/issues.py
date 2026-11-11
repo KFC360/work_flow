@@ -16,7 +16,7 @@ from app.crud import issue as issue_crud
 from app.crud import job as job_crud
 from app.crud import repository as repository_crud
 from app.database.connect import get_db
-from app.dependencies.auth import require_csrf, require_page_user
+from app.dependencies.auth import require_csrf, require_fragment_user, require_page_user
 from app.models.user import User
 from app.services.actions import KIND_LABELS, STATUS_LABELS, actions_for
 from app.services.config_agent import read_agent
@@ -209,7 +209,7 @@ def _status_fragment_html(issue, latest, *, heartbeat_label: str | None) -> str:
 def issue_status_fragment(
     issue_id: int,
     db: Annotated[Session, Depends(get_db)],
-    user: Annotated[User, Depends(require_page_user)],
+    user: Annotated[User, Depends(require_fragment_user)],
 ):
     _ = user
     issue = issue_crud.get(db, issue_id)

@@ -87,6 +87,17 @@ def require_page_user(request: Request, db: DbDep) -> User:
     return user
 
 
+def require_fragment_user(request: Request, db: DbDep) -> User:
+    """For HTMX/fetch fragments: return 401 instead of 303 HTML login redirect."""
+    user = get_optional_page_user(request, db)
+    if user is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Not authenticated",
+        )
+    return user
+
+
 def require_csrf(
     user: Annotated[User, Depends(require_page_user)],
     csrf_token: Annotated[str | None, Form()] = None,

@@ -14,51 +14,78 @@
 
 ## 运行形态
 
-| 进程 | 生产 | 本地开发 |
+| 进程 | 生产 | 本地开发 / 试跑 |
 | --- | --- | --- |
-| PostgreSQL | **跑在宿主机**（系统服务 / 本机安装），不用 Compose | 可用 `compose.yaml` 起临时库，端口 `55438` |
-| Web / Worker | 宿主机进程（需可见 `git`、代理命令与仓库副本） | 同左，`uv run` 启动 |
+| PostgreSQL | **宿主机**系统服务，不用 Compose | 可选 `compose.yaml`（端口 `55438`） |
+| Web / Worker | **Supervisor** 常驻（见下）；只绑 `127.0.0.1`，前面用 Nginx | 终端里 `uv run` 前台跑即可 |
+| 反代 | Nginx → `127.0.0.1:8095` | 可直连本机 8095 |
 
-`DATABASE_URL` 指向本机可达的库即可，例如：
+`DATABASE_URL` 示例：
 
-`postgresql+psycopg://github_workflow:github_workflow@127.0.0.1:5432/github_workflow`
+`postgresql+psycopg://github_workflow:密码@127.0.0.1:5432/github_workflow`
 
-（开发若用 Compose，主机端口为 `55438`。）
-
-## 快速开始
+## 快速开始（本机试跑，不是生产常驻方式）
 
 ```bash
 cp .env.example .env
 cp config.yaml.example config.yaml
-# 填写 DATABASE_URL、JWT_SECRET_KEY（建议 openssl rand -hex 32）、GITHUB_*、APP_ADMIN_PASSWORD
+# 填写 DATABASE_URL、JWT_SECRET_KEY、GITHUB_*、APP_ADMIN_PASSWORD
 
-# 仅本地可选：docker compose up -d   # 起开发用 PostgreSQL
-# 生产：使用宿主机已安装的 PostgreSQL，不要依赖 compose 起库
-
+# uv sync：自动创建 .venv 并安装依赖
 uv sync --extra dev
 uv run alembic upgrade head
+
+# 前台试跑（关终端即停）；生产请用下面「生产部署」
 uv run uvicorn main:app --host 127.0.0.1 --port 8095
 uv run python -m app.tasks.worker
 ```
 
 | 项 | 值 |
 | --- | --- |
-| 应用端口 | `8095` |
-| PostgreSQL（生产） | 宿主机；`DATABASE_URL` 连本机 |
-| PostgreSQL（Compose 开发） | 映射主机 `55438` |
+| 应用端口 | `8095`（仅本机） |
+| PostgreSQL（生产） | 宿主机 `5432`（或你的实际端口） |
 | Webhook | `POST /api/v1/github-callback/` |
 | 健康检查 | `GET /healthz` |
-| 登录 | `GET/POST /login`，API 令牌 `POST /token` |
+| 登录 | `GET/POST /login`，API `POST /token` |
 
-## 安全与部署
+## 生产部署
 
-- 生产库在宿主机维护（备份、账号、库名 `github_workflow` / schema `github_workflow`）；Web 与 Worker 同样跑在该机，经 `127.0.0.1` 访问数据库
-- 部署前在 GitHub **轮换** Webhook Secret，只通过环境变量 `GITHUB_WEBHOOK_SECRET` 注入，勿写入文档或 git
-- Nginx 示例：`deploy/nginx/api.kfc360.xyz.conf`
-  - `/docs`、`/redoc`、`/openapi.json`：`auth_basic`，口令文件 `/etc/nginx/htpasswd/github_workflow_docs`（`htpasswd` 生成，不进 git）
-  - 其余路径反代到 `127.0.0.1:8095`；Webhook **不要** Basic Auth
-- 页面 JWT 放在 HttpOnly cookie；POST 校验由 JWT `jti` 派生的 CSRF
-- `WORKTREE_ROOT` 示例：`/var/lib/github-workflow/worktrees`
+仍是同一套 Python 应用，生产用 **Supervisor** 保活。不要长期挂在 SSH 里的 `uv run`。
+
+推荐布局：
+
+1. 宿主机 PostgreSQL：建用户 / 库 / schema
+2. 项目目录放好 `.env`、`config.yaml`，`uv sync`，`uv run alembic upgrade head`
+3. 建 `WORKTREE_ROOT`（如 `/var/lib/github-workflow/worktrees`），保证运行用户可写
+4. **Supervisor**：Web + **唯一** Worker（示例 `deploy/supervisor/github-workflow.conf`）
+5. Nginx 反代到 `127.0.0.1:8095`（`deploy/nginx/api.kfc360.xyz.conf`）
+
+```bash
+# 按机器改 conf 里的 directory / user / uv 路径后：
+sudo cp deploy/supervisor/github-workflow.conf /etc/supervisor/conf.d/
+sudo supervisorctl reread
+sudo supervisorctl update
+sudo supervisorctl start github-workflow-web github-workflow-worker
+# 或：sudo supervisorctl start github-workflow:*
+sudo supervisorctl status
+```
+
+升级代码：
+
+```bash
+cd /path/to/github_workflow
+git pull
+uv sync --extra dev
+uv run alembic upgrade head
+sudo supervisorctl restart github-workflow-web github-workflow-worker
+```
+
+## 安全与运维
+
+- 生产库在宿主机维护；Web / Worker 经 `127.0.0.1` 连库
+- 部署前轮换 Webhook Secret，只放环境变量 / `.env`，勿进 git
+- Nginx：`/docs`、`/redoc`、`/openapi.json` 用 `auth_basic`；Webhook **不要** Basic Auth
+- 页面 JWT + CSRF；`WORKTREE_ROOT` 示例见上
 
 ## 测试
 
@@ -66,8 +93,6 @@ uv run python -m app.tasks.worker
 uv run pytest
 ```
 
-代理与 git 在测试中可替换。本机核对 Claude / OpenCode 无界面参数见设计稿「待确认」；可用 `CLAUDE_ARGS` / `OPENCODE_ARGS` 整段替换。
-
 ## 目录
 
-实现目录即本目录 `github_workflow/`。入口：`main:app`、`python -m app.tasks.worker`。
+本目录即实现根。入口：`main:app`、`python -m app.tasks.worker`。

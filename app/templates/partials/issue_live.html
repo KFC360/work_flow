@@ -1,0 +1,8 @@
+{% from "macros/ui.html" import live_status %}
+<div data-done="{{ '0' if polling else '1' }}">
+  <div id="issue-live-status" aria-live="polite">
+    {{ live_status(issue, latest_job, log_warning, worker_status, worker_text) }}
+  </div>
+  <pre id="issue-log-live" class="hidden">{{ log_text }}</pre>
+  <p id="issue-log-updated" class="sr-only">日志已更新</p>
+</div>

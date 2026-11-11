@@ -1,62 +1,85 @@
+{% from "macros/icons.html" import icon %}
 <!DOCTYPE html>
 <html lang="zh-CN" data-theme="corporate">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  {% include "partials/head_assets.html" %}
   <title>{% block title %}GitHub 工作流{% endblock %}</title>
-  <link href="https://cdn.jsdelivr.net/npm/daisyui@4.12.14/dist/full.min.css" rel="stylesheet" type="text/css" />
-  <script src="https://cdn.tailwindcss.com"></script>
-  <style>
-    .font-mono-data { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; }
-    @media (prefers-reduced-motion: reduce) {
-      * { animation: none !important; transition: none !important; }
-    }
-  </style>
+  {% block head_extra %}{% endblock %}
 </head>
-<body class="min-h-dvh bg-base-200">
-  <div class="navbar bg-base-100 border-b border-base-300 px-4">
-    <div class="flex-1 gap-4">
-      <a href="/" class="font-semibold text-lg cursor-pointer">GitHub 工作流</a>
-      <nav class="hidden sm:flex gap-2">
-        <a href="/" class="btn btn-ghost btn-sm {% if nav == 'companies' %}btn-active{% endif %}">公司</a>
-        <a href="/deliveries" class="btn btn-ghost btn-sm {% if nav == 'deliveries' %}btn-active{% endif %}">Webhook 投递</a>
-        <a href="/settings" class="btn btn-ghost btn-sm {% if nav == 'settings' %}btn-active{% endif %}">设置</a>
+<body class="min-h-dvh bg-slate-50 text-slate-900 antialiased">
+  <a href="#main" class="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-50 focus:rounded-lg focus:bg-white focus:px-4 focus:py-2 focus:text-sm focus:font-medium focus:text-sky-700 focus:shadow-lg">跳到主内容</a>
+
+  <header class="sticky top-0 z-30 border-b border-slate-200 bg-white/95 backdrop-blur">
+    <div class="mx-auto flex max-w-7xl flex-wrap items-center gap-x-6 gap-y-2 px-4 py-2.5 sm:px-6 lg:px-8">
+      <a class="flex items-center gap-2 rounded-lg py-1 pr-2 text-slate-900" href="/">
+        <span class="flex h-8 w-8 items-center justify-center rounded-lg bg-sky-700 text-white">{{ icon('webhook', 'h-5 w-5') }}</span>
+        <span class="leading-tight">
+          <span class="block text-sm font-semibold tracking-tight">GitHub 工作流</span>
+          <span class="block text-[11px] text-slate-500">内部运维台</span>
+        </span>
+      </a>
+      <nav class="order-3 flex w-full items-center gap-1 overflow-x-auto whitespace-nowrap sm:order-none sm:w-auto" aria-label="主导航">
+        <a class="gw-nav-link" href="/"{% if nav == 'companies' %} aria-current="page"{% endif %}>{{ icon('building') }}<span>公司</span></a>
+        <a class="gw-nav-link" href="/deliveries"{% if nav == 'deliveries' %} aria-current="page"{% endif %}>{{ icon('webhook') }}<span>Webhook 投递</span></a>
+        <a class="gw-nav-link" href="/settings"{% if nav == 'settings' %} aria-current="page"{% endif %}>{{ icon('settings') }}<span>设置</span></a>
       </nav>
+      <div class="ml-auto flex items-center gap-2">
+        <span class="flex h-8 w-8 items-center justify-center rounded-full bg-slate-100 text-xs font-semibold text-slate-700" aria-hidden="true">{{ (user.username or '?')[:1]|upper }}</span>
+        <span class="hidden text-sm text-slate-600 sm:inline">{{ user.username }}</span>
+        <form method="post" action="/logout" class="inline-flex">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+          <button type="submit" class="btn btn-ghost btn-sm gap-1.5" data-gw-submit>{{ icon('logout') }}<span class="hidden sm:inline">退出</span></button>
+        </form>
+      </div>
     </div>
-    <div class="flex-none gap-2">
-      <span class="text-sm opacity-70">{{ user.username }}</span>
-      <form method="post" action="/logout">
-        <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
-        <button type="submit" class="btn btn-ghost btn-sm">退出</button>
-      </form>
-    </div>
-  </div>
+  </header>
 
-  <main class="max-w-7xl mx-auto px-4 py-6 space-y-4">
-    {% if breadcrumbs %}
-    <div class="breadcrumbs text-sm">
-      <ul>
+  <main id="main" class="mx-auto w-full max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
+    {% if breadcrumbs and breadcrumbs|length > 1 %}
+    <nav class="mb-4" aria-label="面包屑">
+      <ol class="flex flex-wrap items-center gap-1 text-sm text-slate-500">
         {% for label, href in breadcrumbs %}
-        <li>{% if href %}<a href="{{ href }}">{{ label }}</a>{% else %}{{ label }}{% endif %}</li>
+        <li class="flex min-w-0 items-center gap-1">
+          {% if not loop.first %}{{ icon('chevron-right', 'h-4 w-4 shrink-0 text-slate-400') }}{% endif %}
+          {% if href and not loop.last %}
+          <a class="link link-hover max-w-[16rem] truncate" href="{{ href }}" title="{{ label }}">{{ label }}</a>
+          {% else %}
+          <span class="max-w-[22rem] truncate {% if loop.last %}font-medium text-slate-700{% endif %}" title="{{ label }}"{% if loop.last %} aria-current="page"{% endif %}>{{ label }}</span>
+          {% endif %}
+        </li>
         {% endfor %}
-      </ul>
-    </div>
+      </ol>
+    </nav>
     {% endif %}
 
-    {% if flash == 'ok' %}
-    <div class="alert alert-success" role="status" id="flash-ok">{{ msg or '已保存' }}</div>
-    {% elif flash == 'error' %}
-    <div class="alert alert-error" role="alert">{{ msg or '操作失败' }}</div>
-    {% endif %}
+    {% block page_header %}{% endblock %}
+
+    {% include "partials/flash.html" %}
 
     {% block content %}{% endblock %}
   </main>
-  <script>
-    (function () {
-      var el = document.getElementById('flash-ok');
-      if (el) setTimeout(function () { el.style.display = 'none'; }, 4000);
-    })();
-  </script>
+
+  <footer class="mt-10 border-t border-slate-200 bg-white">
+    <div class="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-2 px-4 py-4 text-xs text-slate-500 sm:px-6 lg:px-8">
+      <p>GitHub 工作流 · 内部运维台</p>
+    </div>
+  </footer>
+
+  <dialog id="gw-confirm" class="modal" aria-labelledby="gw-confirm-title" aria-describedby="gw-confirm-body">
+    <div class="modal-box">
+      <h3 id="gw-confirm-title" class="text-lg font-semibold text-slate-900"></h3>
+      <p id="gw-confirm-body" class="py-3 text-sm leading-6 text-slate-600"></p>
+      <div class="modal-action">
+        <button type="button" class="btn btn-ghost" data-gw-cancel>取消</button>
+        <button type="button" class="btn btn-primary" data-gw-ok>确认执行</button>
+      </div>
+    </div>
+    <form method="dialog" class="modal-backdrop" data-gw-backdrop>
+      <button>关闭</button>
+    </form>
+  </dialog>
+
+  {% include "partials/app_scripts.html" %}
   {% block scripts %}{% endblock %}
 </body>
 </html>

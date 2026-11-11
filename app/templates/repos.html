@@ -1,38 +1,70 @@
 {% extends "base.html" %}
+{% from "macros/ui.html" import page_header, empty_state, pagination as pagination_bar %}
+{% from "macros/icons.html" import icon %}
 {% block title %}{{ company.name }} · 仓库{% endblock %}
+
+{% block page_header %}
+{% call page_header(company.name, '该所有者下的仓库与同步状态。服务器路径未填写时，Issue 可以浏览，但无法编写文档或生成代码。', '公司') %}
+  <span class="text-sm text-slate-500">共 <span class="font-mono-data text-slate-900">{{ total }}</span> 个仓库</span>
+{% endcall %}
+{% endblock %}
+
 {% block content %}
-<div class="flex justify-between items-center">
-  <h1 class="text-2xl font-semibold">仓库</h1>
-</div>
 {% if not rows %}
-<div class="card bg-base-100 shadow"><div class="card-body"><p>该公司下还没有仓库。</p></div></div>
+  {{ empty_state('该公司下还没有仓库', '收到该公司的 Issue Webhook 后会自动出现。', 'repo', '/deliveries', '查看 Webhook 投递') }}
 {% else %}
-<div class="overflow-x-auto bg-base-100 rounded-box shadow">
-  <table class="table">
-    <thead>
-      <tr><th>仓库</th><th>默认分支</th><th>服务器路径</th><th>开放 Issue</th><th>操作</th></tr>
-    </thead>
-    <tbody>
-      {% for row in rows %}
-      <tr>
-        <td>
-          <a class="link" href="/repos/{{ row.repo.id }}">{{ row.repo.github_full_name }}</a>
-          {% if row.repo.html_url %}<a class="link link-hover text-xs ml-2" href="{{ row.repo.html_url }}" target="_blank" rel="noopener">GitHub</a>{% endif %}
-        </td>
-        <td class="font-mono-data">{{ row.repo.default_branch }}</td>
-        <td class="font-mono-data text-sm">{{ row.repo.local_path or '未填写' }}</td>
-        <td>{{ row.open_issues }}</td>
-        <td class="flex gap-2">
-          <a class="btn btn-xs" href="/repos/{{ row.repo.id }}/issues">Issue</a>
-          <form method="post" action="/repos/{{ row.repo.id }}/resync">
-            <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
-            <button class="btn btn-xs btn-outline" type="submit">重新同步</button>
-          </form>
-        </td>
-      </tr>
-      {% endfor %}
-    </tbody>
-  </table>
+<div class="gw-card overflow-hidden">
+  <div class="overflow-x-auto">
+    <table class="gw-table table min-w-[56rem]">
+      <thead>
+        <tr>
+          <th scope="col">仓库</th>
+          <th scope="col">默认分支</th>
+          <th scope="col">服务器路径</th>
+          <th scope="col" class="text-right">开放 Issue</th>
+          <th scope="col" class="text-right">操作</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in rows %}
+        <tr>
+          <td>
+            <div class="flex items-center gap-2">
+              <a class="link link-hover font-mono-data text-sm font-medium text-slate-900" href="/repos/{{ row.repo.id }}">{{ row.repo.github_full_name }}</a>
+              {% if row.repo.html_url %}
+              <a class="btn btn-ghost btn-xs" href="{{ row.repo.html_url }}" target="_blank" rel="noopener" aria-label="在 GitHub 打开 {{ row.repo.github_full_name }}" title="在 GitHub 打开">{{ icon('external-link') }}</a>
+              {% endif %}
+            </div>
+          </td>
+          <td><code class="rounded bg-slate-100 px-1.5 py-0.5 text-xs text-slate-700">{{ row.repo.default_branch }}</code></td>
+          <td>
+            {% if row.repo.local_path %}
+            <span class="block max-w-[18rem] truncate font-mono-data text-xs text-slate-700" title="{{ row.repo.local_path }}">{{ row.repo.local_path }}</span>
+            {% else %}
+            <span class="flex flex-wrap items-center gap-2">
+              <span class="badge badge-sm badge-warning gap-1 whitespace-nowrap">{{ icon('alert-triangle', 'h-3.5 w-3.5') }}<span>未填写</span></span>
+              <a class="link link-hover text-xs font-medium text-sky-700" href="/repos/{{ row.repo.id }}">去填写</a>
+            </span>
+            {% endif %}
+          </td>
+          <td class="text-right">
+            <a class="link link-hover font-mono-data tabular-nums text-slate-900" href="/repos/{{ row.repo.id }}/issues?github_state=open" aria-label="查看 {{ row.repo.github_full_name }} 的开放 Issue">{{ row.open_issues }}</a>
+          </td>
+          <td>
+            <div class="flex flex-wrap items-center justify-end gap-2">
+              <a class="btn btn-sm btn-primary gap-1.5" href="/repos/{{ row.repo.id }}/issues">{{ icon('issue') }}<span>Issue</span></a>
+              <form method="post" action="/repos/{{ row.repo.id }}/resync" class="inline-flex">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+                <button type="submit" class="btn btn-sm btn-outline gap-1.5" data-gw-submit>{{ icon('refresh') }}<span>重新同步</span></button>
+              </form>
+            </div>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
 </div>
 {% endif %}
+{{ pagination_bar(page, pagination.has_prev, pagination.has_next, pagination.prev_url, pagination.next_url) }}
 {% endblock %}

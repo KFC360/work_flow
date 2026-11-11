@@ -5,11 +5,10 @@ from urllib.parse import quote
 
 from fastapi import APIRouter, Depends, Form, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
-from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session
 
 from app.core.security import csrf_token_for_jti
-from app.core.settings import PROJECT_ROOT
+from app.core.templating import build_templates
 from app.crud import company as company_crud
 from app.crud import job as job_crud
 from app.crud import repository as repository_crud
@@ -21,7 +20,7 @@ from app.services.github_api import GitHubAPIError, GitHubClient
 from app.services.ingest import sync_owner_and_repo
 
 router = APIRouter(tags=["repos"])
-templates = Jinja2Templates(directory=str(PROJECT_ROOT / "app" / "templates"))
+templates = build_templates()
 
 
 def _ctx(user: User, **extra):

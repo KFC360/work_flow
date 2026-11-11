@@ -1,37 +1,89 @@
 {% extends "base.html" %}
+{% from "macros/ui.html" import page_header, worker_badge %}
+{% from "macros/icons.html" import icon %}
 {% block title %}设置 · GitHub 工作流{% endblock %}
+
+{% block page_header %}
+{{ page_header('设置', '全站代理只在这里选择；修改立即对之后的任务生效。', '系统') }}
+{% endblock %}
+
 {% block content %}
-<h1 class="text-2xl font-semibold">设置</h1>
 {% if not agent %}
-<div class="alert alert-warning">尚未选择代理。编写文档与生成代码前必须配置。</div>
-{% endif %}
-<div class="card bg-base-100 shadow max-w-lg mb-4">
-  <div class="card-body">
-    <h2 class="card-title text-base">Worker 状态</h2>
-    <p class="text-sm">{{ worker_label }}</p>
-    {% if worker_updated_at %}
-    <p class="text-xs opacity-70 font-mono-data">心跳：{{ worker_updated_at }}</p>
-    {% endif %}
-    <p class="text-xs opacity-60 font-mono-data">{{ worker_heartbeat_path }}</p>
-  </div>
+<div class="alert alert-warning mb-4 flex items-start gap-2 text-sm" role="alert">
+  {{ icon('alert-triangle', 'h-5 w-5 shrink-0') }}
+  <span>尚未选择代理。编写文档与生成代码前必须配置。</span>
 </div>
-<div class="card bg-base-100 shadow max-w-lg">
-  <div class="card-body">
-    <p class="text-sm opacity-70">当前选择会用于之后所有仓库的编写文档和生成代码。</p>
-    <form method="post" action="/settings" class="space-y-4" onsubmit="this.querySelector('button[type=submit]').disabled=true">
+{% endif %}
+
+<div class="grid gap-6 lg:grid-cols-3">
+  <section class="gw-card order-1 p-5 lg:col-span-2" aria-labelledby="agent-title">
+    <h2 id="agent-title" class="mb-1 flex items-center gap-2 text-base font-semibold text-slate-900">
+      {{ icon('settings', 'h-5 w-5 text-slate-500') }}<span>全站代理</span>
+    </h2>
+    <p class="mb-4 text-sm leading-6 text-slate-600">所有仓库共用这一选择；已开始的任务继续使用任务行上记录的代理。</p>
+    <form method="post" action="/settings" class="space-y-5">
       <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
-      <div class="form-control">
-        <label class="label cursor-pointer justify-start gap-3">
-          <input type="radio" name="agent" value="opencode" class="radio" {% if agent == 'opencode' %}checked{% endif %} required />
-          <span class="label-text">opencode</span>
-        </label>
-        <label class="label cursor-pointer justify-start gap-3">
-          <input type="radio" name="agent" value="claude" class="radio" {% if agent == 'claude' %}checked{% endif %} />
-          <span class="label-text">claude</span>
-        </label>
-      </div>
-      <button type="submit" class="btn btn-primary">保存</button>
+      <fieldset>
+        <legend class="sr-only">选择代理</legend>
+        <div class="grid gap-3 sm:grid-cols-2">
+          <label class="flex cursor-pointer items-start gap-3 rounded-xl border p-4 transition-colors {% if agent == 'opencode' %}border-sky-600 bg-sky-50{% else %}border-slate-200 bg-white hover:bg-slate-50{% endif %}">
+            <input type="radio" name="agent" value="opencode" class="radio radio-primary mt-0.5" {% if agent == 'opencode' %}checked{% endif %} required />
+            <span class="min-w-0">
+              <span class="flex flex-wrap items-center gap-2">
+                <span class="text-sm font-semibold text-slate-900">opencode</span>
+                {% if agent == 'opencode' %}<span class="badge badge-sm badge-success">当前生效</span>{% endif %}
+              </span>
+              <span class="mt-1 block text-xs leading-5 text-slate-600">使用 <code>opencode run</code> 调用。</span>
+            </span>
+          </label>
+          <label class="flex cursor-pointer items-start gap-3 rounded-xl border p-4 transition-colors {% if agent == 'claude' %}border-sky-600 bg-sky-50{% else %}border-slate-200 bg-white hover:bg-slate-50{% endif %}">
+            <input type="radio" name="agent" value="claude" class="radio radio-primary mt-0.5" {% if agent == 'claude' %}checked{% endif %} />
+            <span class="min-w-0">
+              <span class="flex flex-wrap items-center gap-2">
+                <span class="text-sm font-semibold text-slate-900">claude</span>
+                {% if agent == 'claude' %}<span class="badge badge-sm badge-success">当前生效</span>{% endif %}
+              </span>
+              <span class="mt-1 block text-xs leading-5 text-slate-600">使用 <code>claude -p</code> 调用。</span>
+            </span>
+          </label>
+        </div>
+      </fieldset>
+      <button type="submit" class="btn btn-primary btn-sm gap-1.5" data-gw-submit>
+        {{ icon('check') }}<span>保存</span>
+      </button>
     </form>
-  </div>
+  </section>
+
+  <section class="gw-card order-2 p-5 lg:col-span-1" aria-labelledby="worker-title">
+    <h2 id="worker-title" class="mb-4 flex items-center gap-2 text-base font-semibold text-slate-900">
+      {{ icon('terminal', 'h-5 w-5 text-slate-500') }}<span>Worker 心跳</span>
+    </h2>
+    <div class="flex flex-wrap items-center gap-2">
+      {{ worker_badge(worker_status) }}
+      <span class="text-sm text-slate-700">{{ worker_label }}</span>
+    </div>
+    <dl class="mt-4 space-y-3 text-xs">
+      <div>
+        <dt class="text-slate-500">最近心跳</dt>
+        <dd class="mt-0.5 font-mono-data text-slate-700">
+          {% if worker_status in ('idle', 'running') and worker_updated_at %}
+          {{ worker_updated_at | gw_time }} UTC
+          {% else %}
+          —
+          {% endif %}
+        </dd>
+      </div>
+      <div>
+        <dt class="text-slate-500">心跳文件</dt>
+        <dd class="mt-0.5 break-all font-mono-data text-slate-500">{{ worker_heartbeat_path }}</dd>
+      </div>
+    </dl>
+    {% if worker_status in ('stale', 'missing') %}
+    <div class="alert alert-warning mt-4 flex items-start gap-2 text-xs" role="alert">
+      {{ icon('alert-triangle', 'h-4 w-4 shrink-0') }}
+      <span>Worker 可能未启动或已停止；任务不会执行。</span>
+    </div>
+    {% endif %}
+  </section>
 </div>
 {% endblock %}

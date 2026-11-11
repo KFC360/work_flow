@@ -1,77 +1,116 @@
 {% extends "base.html" %}
+{% from "macros/ui.html" import page_header, kind_badge, issue_status_badge, empty_state, pagination as pagination_bar, issue_actions %}
+{% from "macros/icons.html" import icon %}
 {% block title %}Issue · {{ repo.github_full_name }}{% endblock %}
+
+{% block page_header %}
+{% call page_header('Issue', '按编号倒序；筛选条件会写入 URL。操作可用性与流程状态严格对应。', '仓库 · ' ~ repo.github_full_name) %}
+  <span class="text-sm text-slate-500">当前结果 <span class="font-mono-data text-slate-900">{{ total }}</span> 条</span>
+{% endcall %}
+{% endblock %}
+
 {% block content %}
-<div class="flex flex-wrap justify-between gap-4 items-end">
-  <h1 class="text-2xl font-semibold">Issue</h1>
-  <form method="get" class="flex flex-wrap gap-2 items-end">
-    <div class="form-control">
-      <label class="label" for="kind"><span class="label-text">类型</span></label>
-      <select id="kind" name="kind" class="select select-bordered select-sm">
+<div class="gw-card mb-4 p-4">
+  <form method="get" class="flex flex-wrap items-end gap-3" data-gw-filter-form>
+    <div class="min-w-0">
+      <label class="mb-1 block text-xs font-medium text-slate-600" for="kind">类型</label>
+      <select id="kind" name="kind" class="select select-bordered select-sm w-full min-w-[8rem]">
         <option value="" {% if not kind %}selected{% endif %}>全部</option>
-        <option value="feature" {% if kind=='feature' %}selected{% endif %}>功能迭代</option>
-        <option value="support" {% if kind=='support' %}selected{% endif %}>人工介入</option>
-        <option value="pending" {% if kind=='pending' %}selected{% endif %}>待分类</option>
+        <option value="feature" {% if kind == 'feature' %}selected{% endif %}>功能迭代</option>
+        <option value="support" {% if kind == 'support' %}selected{% endif %}>人工介入</option>
+        <option value="pending" {% if kind == 'pending' %}selected{% endif %}>待分类</option>
       </select>
     </div>
-    <div class="form-control">
-      <label class="label" for="status"><span class="label-text">流程状态</span></label>
-      <input id="status" name="status" class="input input-bordered input-sm" value="{{ status or '' }}" placeholder="可选" />
-    </div>
-    <div class="form-control">
-      <label class="label" for="github_state"><span class="label-text">GitHub</span></label>
-      <select id="github_state" name="github_state" class="select select-bordered select-sm">
-        <option value="open" {% if github_state=='open' %}selected{% endif %}>open</option>
-        <option value="closed" {% if github_state=='closed' %}selected{% endif %}>closed</option>
-        <option value="" {% if github_state=='' %}selected{% endif %}>全部</option>
+    <div class="min-w-0">
+      <label class="mb-1 block text-xs font-medium text-slate-600" for="status">流程状态</label>
+      <select id="status" name="status" class="select select-bordered select-sm w-full min-w-[9rem]">
+        <option value="" {% if not status %}selected{% endif %}>全部</option>
+        {% for value, label in status_options %}
+        <option value="{{ value }}" {% if status == value %}selected{% endif %}>{{ label }}</option>
+        {% endfor %}
       </select>
     </div>
-    <button class="btn btn-sm btn-primary" type="submit">筛选</button>
-    <a class="btn btn-sm btn-ghost" href="?github_state=open">清除筛选</a>
+    <div class="min-w-0">
+      <label class="mb-1 block text-xs font-medium text-slate-600" for="github_state">GitHub 状态</label>
+      <select id="github_state" name="github_state" class="select select-bordered select-sm w-full min-w-[8rem]">
+        <option value="open" {% if github_state == 'open' %}selected{% endif %}>开放</option>
+        <option value="closed" {% if github_state == 'closed' %}selected{% endif %}>已关闭</option>
+        <option value="" {% if github_state == '' %}selected{% endif %}>全部</option>
+      </select>
+    </div>
+    <div class="flex flex-wrap items-center gap-2">
+      <button class="btn btn-sm btn-primary gap-1.5" type="submit">{{ icon('check') }}<span>应用筛选</span></button>
+      <a class="btn btn-sm btn-ghost" href="?github_state=open">清除筛选</a>
+    </div>
   </form>
 </div>
 
 {% if not rows %}
-<div class="card bg-base-100 shadow">
-  <div class="card-body items-center text-center">
-    <h2 class="card-title">{% if kind == 'support' %}还没有人工介入 Issue{% else %}还没有 Issue{% endif %}</h2>
-    <p class="opacity-70">{% if kind == 'support' %}人工介入本期只收录，处理流程以后再做。{% else %}收到 Webhook 后将出现在这里。{% endif %}</p>
+  {% if kind == 'support' %}
+    {{ empty_state('还没有人工介入 Issue', '人工介入本期只收录，处理流程以后再做。', 'life-buoy', '?github_state=open', '清除筛选') }}
+  {% elif has_filters %}
+    {{ empty_state('没有符合筛选的 Issue', '当前类型、流程状态或 GitHub 状态组合下没有结果。', 'issue', '?github_state=open', '清除筛选') }}
+  {% else %}
+    {{ empty_state('还没有 Issue', '收到 Webhook 后将出现在这里。', 'issue', '?github_state=open', '清除筛选') }}
+  {% endif %}
+{% else %}
+<div class="gw-card overflow-hidden">
+  <div class="overflow-x-auto">
+    <table class="gw-table table min-w-[62rem]">
+      <thead>
+        <tr>
+          <th scope="col">编号</th>
+          <th scope="col">标题</th>
+          <th scope="col">类型</th>
+          <th scope="col">状态</th>
+          <th scope="col">更新</th>
+          <th scope="col" class="text-right">操作</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for item in rows %}
+        <tr>
+          <td class="align-top">
+            <div class="flex items-center gap-1">
+              <a class="link link-hover font-mono-data text-sm text-slate-900" href="/issues/{{ item.issue.id }}">#{{ item.issue.number }}</a>
+              {% if item.issue.html_url %}
+              <a class="btn btn-ghost btn-xs" href="{{ item.issue.html_url }}" target="_blank" rel="noopener" aria-label="在 GitHub 打开 Issue #{{ item.issue.number }}" title="在 GitHub 打开">{{ icon('external-link') }}</a>
+              {% endif %}
+            </div>
+          </td>
+          <td class="align-top">
+            <a class="link link-hover line-clamp-2 max-w-[24rem] font-medium text-slate-900" href="/issues/{{ item.issue.id }}" title="{{ item.issue.title }}">{{ item.issue.title }}</a>
+            {% if item.issue.author_login %}
+            <span class="mt-0.5 block text-xs text-slate-500">@{{ item.issue.author_login }}</span>
+            {% endif %}
+          </td>
+          <td class="align-top">{{ kind_badge(item.issue.kind) }}</td>
+          <td class="align-top">{{ issue_status_badge(item.issue.status, item.status_label) }}</td>
+          <td class="align-top whitespace-nowrap font-mono-data text-xs text-slate-600"{% if item.issue.github_updated_at or item.issue.updated_at %} title="{{ (item.issue.github_updated_at or item.issue.updated_at) | gw_iso }}"{% endif %}>{{ (item.issue.github_updated_at or item.issue.updated_at) | gw_time }} UTC</td>
+          <td class="align-top">
+            {{ issue_actions(item.actions, csrf_token) }}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
   </div>
 </div>
-{% else %}
-<div class="overflow-x-auto bg-base-100 rounded-box shadow">
-  <table class="table">
-    <thead>
-      <tr><th>编号</th><th>标题</th><th>类型</th><th>状态</th><th>更新</th><th>操作</th></tr>
-    </thead>
-    <tbody>
-      {% for item in rows %}
-      <tr>
-        <td class="font-mono-data">
-          <a class="link" href="/issues/{{ item.issue.id }}">#{{ item.issue.number }}</a>
-          <a class="link link-hover text-xs ml-1" href="{{ item.issue.html_url }}" target="_blank" rel="noopener">GH</a>
-        </td>
-        <td>{{ item.issue.title }}</td>
-        <td><span class="badge badge-outline">{{ item.kind_label }}</span></td>
-        <td><span class="badge">{{ item.status_label }}</span></td>
-        <td class="font-mono-data text-xs">{{ item.issue.github_updated_at or item.issue.updated_at }}</td>
-        <td class="flex flex-wrap gap-1">
-          {% for act in item.actions %}
-            {% if act.kind == 'link' %}
-              <a class="btn btn-xs" href="{{ act.href }}" {% if act.href and act.href.startswith('http') %}target="_blank" rel="noopener"{% endif %}>{{ act.label }}</a>
-            {% elif act.kind == 'text' %}
-              <button class="btn btn-xs btn-disabled" disabled>{{ act.label }}</button>
-            {% else %}
-              <form method="post" action="{{ act.form_action }}" class="inline" {% if act.confirm %}onsubmit="return confirm('{{ act.confirm }}')"{% endif %}>
-                <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
-                <button class="btn btn-xs btn-primary" type="submit">{{ act.label }}</button>
-              </form>
-            {% endif %}
-          {% endfor %}
-        </td>
-      </tr>
-      {% endfor %}
-    </tbody>
-  </table>
-</div>
 {% endif %}
+{{ pagination_bar(page, pagination.has_prev, pagination.has_next, pagination.prev_url, pagination.next_url) }}
+{% endblock %}
+
+{% block scripts %}
+<script>
+  (function () {
+    var form = document.querySelector('[data-gw-filter-form]');
+    if (!form) return;
+    Array.prototype.forEach.call(form.querySelectorAll('select'), function (select) {
+      select.addEventListener('change', function () {
+        if (typeof form.requestSubmit === 'function') form.requestSubmit();
+        else form.submit();
+      });
+    });
+  })();
+</script>
 {% endblock %}

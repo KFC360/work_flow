@@ -5,11 +5,10 @@ from urllib.parse import quote
 
 from fastapi import APIRouter, Depends, Form, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
-from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session
 
 from app.core.security import csrf_token_for_jti
-from app.core.settings import PROJECT_ROOT
+from app.core.templating import build_templates
 from app.database.connect import get_db
 from app.dependencies.auth import require_csrf, require_page_user
 from app.models.user import User
@@ -17,7 +16,7 @@ from app.services.config_agent import read_agent, write_agent
 from app.services.worker_heartbeat import HEARTBEAT_PATH, read_heartbeat
 
 router = APIRouter(tags=["settings"])
-templates = Jinja2Templates(directory=str(PROJECT_ROOT / "app" / "templates"))
+templates = build_templates()
 
 
 @router.get("/settings", response_class=HTMLResponse)
@@ -40,6 +39,7 @@ def settings_page(
             "breadcrumbs": [("设置", None)],
             "flash": request.query_params.get("flash"),
             "msg": request.query_params.get("msg"),
+            "worker_status": heartbeat.status,
             "worker_label": heartbeat.label,
             "worker_updated_at": heartbeat.updated_at,
             "worker_heartbeat_path": str(HEARTBEAT_PATH),

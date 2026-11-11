@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
+from typing import Iterable
 
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
@@ -84,6 +85,19 @@ def open_issue_count(db: Session, repository_id: int) -> int:
         )
         or 0
     )
+
+
+def full_names_by_github_ids(db: Session, github_ids: Iterable[int]) -> dict[int, str]:
+    """Read-only projection for pages that only have GitHub repository ids."""
+    ids = sorted({int(value) for value in github_ids if value is not None})
+    if not ids:
+        return {}
+    rows = db.execute(
+        select(Repository.github_repo_id, Repository.github_full_name).where(
+            Repository.github_repo_id.in_(ids)
+        )
+    )
+    return {int(github_id): full_name for github_id, full_name in rows}
 
 
 def set_sync_error(db: Session, row: Repository, error: str) -> None:

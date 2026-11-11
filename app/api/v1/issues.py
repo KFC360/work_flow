@@ -1,16 +1,14 @@
 from __future__ import annotations
 
-import html
 from typing import Annotated
-from urllib.parse import quote
+from urllib.parse import quote, urlencode
 
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
-from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session
 
 from app.core.security import csrf_token_for_jti
-from app.core.settings import PROJECT_ROOT
+from app.core.templating import build_templates
 from app.crud import company as company_crud
 from app.crud import issue as issue_crud
 from app.crud import job as job_crud
@@ -29,10 +27,10 @@ from app.services.issues import (
     classify_labels,
 )
 from app.services.job_logs import read_job_log_tail, safe_job_log_path
-from app.services.worker_heartbeat import read_heartbeat
+from app.services.worker_heartbeat import HeartbeatView, read_heartbeat
 
 router = APIRouter(tags=["issues"])
-templates = Jinja2Templates(directory=str(PROJECT_ROOT / "app" / "templates"))
+templates = build_templates()
 PAGE_SIZE = 50
 
 
@@ -41,6 +39,48 @@ def _ctx(user: User, **extra):
     base = {"user": user, "csrf_token": csrf_token_for_jti(jti) if jti else "", "nav": "companies"}
     base.update(extra)
     return base
+
+
+def _issue_list_url(
+    repo_id: int,
+    *,
+    kind: str | None,
+    status: str | None,
+    github_state: str | None,
+    page: int,
+) -> str:
+    params: list[tuple[str, str]] = []
+    if kind:
+        params.append(("kind", kind))
+    if status:
+        params.append(("status", status))
+    if github_state:
+        params.append(("github_state", github_state))
+    if page > 1:
+        params.append(("page", str(page)))
+    query = urlencode(params)
+    return f"/repos/{repo_id}/issues" + (f"?{query}" if query else "")
+
+
+def _log_context(latest):
+    if latest is None:
+        return "", False
+    warning = bool(
+        latest.log_path
+        and safe_job_log_path(latest.log_path) is None
+        and not latest.log_excerpt
+    )
+    if warning:
+        return "", True
+    return read_job_log_tail(latest.log_path) or (latest.log_excerpt or ""), False
+
+
+def _worker_text(issue, heartbeat: HeartbeatView) -> str:
+    if heartbeat.status == "idle":
+        return "Worker 空闲"
+    if heartbeat.status == "running":
+        return "执行中（本 Issue）" if heartbeat.issue_id == issue.id else "执行中（其他 Issue）"
+    return "无心跳，任务可能不会执行"
 
 
 @router.get("/repos/{repo_id}/issues", response_class=HTMLResponse)
@@ -71,6 +111,13 @@ def issue_list(
         offset=(page - 1) * PAGE_SIZE,
         limit=PAGE_SIZE,
     )
+    total = issue_crud.count_for_repo(
+        db,
+        repo_id,
+        kind=kind or None,
+        status=status or None,
+        github_state=gh,
+    )
     rows = [
         {
             "issue": i,
@@ -80,6 +127,10 @@ def issue_list(
         }
         for i in issues
     ]
+    status_options = list(STATUS_LABELS.items())
+    if status and status not in STATUS_LABELS:
+        status_options.append((status, status))
+    has_filters = bool(kind or status) or (github_state not in (None, "", "open"))
     return templates.TemplateResponse(
         request,
         "issues.html",
@@ -88,10 +139,32 @@ def issue_list(
             repo=repo,
             company=company,
             rows=rows,
+            total=total,
             kind=kind or "",
             status=status or "",
+            status_options=status_options,
+            has_filters=has_filters,
             github_state=github_state if github_state is not None else "open",
             page=page,
+            pagination={
+                "page": page,
+                "has_prev": page > 1,
+                "has_next": page * PAGE_SIZE < total,
+                "prev_url": _issue_list_url(
+                    repo_id,
+                    kind=kind,
+                    status=status,
+                    github_state=github_state,
+                    page=page - 1,
+                ),
+                "next_url": _issue_list_url(
+                    repo_id,
+                    kind=kind,
+                    status=status,
+                    github_state=github_state,
+                    page=page + 1,
+                ),
+            },
             flash=request.query_params.get("flash"),
             msg=request.query_params.get("msg"),
             breadcrumbs=[
@@ -138,12 +211,8 @@ def issue_detail(
         except OSError:
             foundation_missing = True
     heartbeat = read_heartbeat()
-    related_running = (
-        heartbeat.status == "running" and heartbeat.issue_id == issue.id
-    )
-    log_text = ""
-    if latest:
-        log_text = read_job_log_tail(latest.log_path) or (latest.log_excerpt or "")
+    log_text, log_warning = _log_context(latest)
+    worker_text = _worker_text(issue, heartbeat)
     return templates.TemplateResponse(
         request,
         "issue_detail.html",
@@ -160,8 +229,13 @@ def issue_detail(
             label_mismatch=label_mismatch,
             foundation_missing=foundation_missing,
             foundation_path=foundation_relpath(repo.doc_dir),
-            related_worker_label=heartbeat.label if related_running else None,
+            worker_status=heartbeat.status,
+            worker_text=worker_text,
+            worker_label=worker_text,
+            worker_related=heartbeat.status == "running" and heartbeat.issue_id == issue.id,
+            worker_updated_at=heartbeat.updated_at if heartbeat.status in {"idle", "running"} else None,
             log_text=log_text,
+            log_warning=log_warning,
             polling=issue.status in {"drafting", "generating"},
             flash=request.query_params.get("flash"),
             msg=request.query_params.get("msg"),
@@ -175,55 +249,34 @@ def issue_detail(
     )
 
 
-def _status_fragment_html(issue, latest, *, heartbeat_label: str | None) -> str:
-    done = "0" if issue.status in {"drafting", "generating"} else "1"
-    err = html.escape(issue.last_error or "—")
-    status = html.escape(STATUS_LABELS.get(issue.status, issue.status))
-    parts = [
-        f'<div data-done="{done}">',
-        f'<p>流程状态：<span class="badge">{status}</span></p>',
-        f"<p>错误：{err}</p>",
-    ]
-    if latest:
-        parts.append(
-            f"<p>最近任务：{html.escape(latest.action)} / {html.escape(latest.status)}</p>"
-        )
-        if latest.action == "generate_code" and issue.codegen_phase:
-            parts.append(f"<p>阶段：{html.escape(issue.codegen_phase)}</p>")
-        log_text = read_job_log_tail(latest.log_path) or (latest.log_excerpt or "")
-        if latest.log_path and safe_job_log_path(latest.log_path) is None and not latest.log_excerpt:
-            log_text = ""
-            parts.append('<p class="text-warning">日志路径不可用</p>')
-        parts.append(
-            '<pre id="issue-log-live" class="whitespace-pre-wrap font-mono-data text-xs '
-            'bg-base-200 p-3 rounded max-h-96 overflow-auto">'
-            f"{html.escape(log_text)}</pre>"
-        )
-    if heartbeat_label:
-        parts.append(f"<p>Worker：{html.escape(heartbeat_label)}</p>")
-    parts.append("</div>")
-    return "".join(parts)
-
-
 @router.get("/issues/{issue_id}/status-fragment", response_class=HTMLResponse)
 def issue_status_fragment(
     issue_id: int,
+    request: Request,
     db: Annotated[Session, Depends(get_db)],
     user: Annotated[User, Depends(require_fragment_user)],
 ):
     _ = user
     issue = issue_crud.get(db, issue_id)
-    if issue is None:
+    if issue is None or issue.deleted_at is not None:
         return HTMLResponse("not found", status_code=404)
     latest = job_crud.latest_for_issue(db, issue.id)
     heartbeat = read_heartbeat()
-    related = heartbeat.status == "running" and heartbeat.issue_id == issue.id
-    return HTMLResponse(
-        _status_fragment_html(
-            issue,
-            latest,
-            heartbeat_label=heartbeat.label if related else None,
-        )
+    log_text, log_warning = _log_context(latest)
+    worker_text = _worker_text(issue, heartbeat)
+    return templates.TemplateResponse(
+        request,
+        "partials/issue_live.html",
+        {
+            "issue": issue,
+            "latest_job": latest,
+            "worker_status": heartbeat.status,
+            "worker_text": worker_text,
+            "worker_label": worker_text,
+            "log_text": log_text,
+            "log_warning": log_warning,
+            "polling": issue.status in {"drafting", "generating"},
+        },
     )
 
 

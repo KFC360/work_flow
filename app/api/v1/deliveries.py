@@ -2,20 +2,20 @@ from __future__ import annotations
 
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Form, Request
+from fastapi import APIRouter, Depends, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
-from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session
 
 from app.core.security import csrf_token_for_jti
-from app.core.settings import PROJECT_ROOT
+from app.core.templating import build_templates
+from app.crud import repository as repository_crud
 from app.crud import webhook_delivery as delivery_crud
 from app.database.connect import get_db
 from app.dependencies.auth import require_csrf, require_page_user
 from app.models.user import User
 
 router = APIRouter(tags=["deliveries"])
-templates = Jinja2Templates(directory=str(PROJECT_ROOT / "app" / "templates"))
+templates = build_templates()
 PAGE_SIZE = 50
 
 
@@ -35,7 +35,11 @@ def deliveries_page(
     rows = delivery_crud.list_deliveries(
         db, status=status_filter, offset=(page - 1) * PAGE_SIZE, limit=PAGE_SIZE
     )
+    repo_names = repository_crud.full_names_by_github_ids(
+        db, [r.repository_id for r in rows if r.repository_id is not None]
+    )
     jti = getattr(user, "_token_jti", "")
+    selected_status = status_filter or "all"
     return templates.TemplateResponse(
         request,
         "deliveries.html",
@@ -43,10 +47,17 @@ def deliveries_page(
             "user": user,
             "csrf_token": csrf_token_for_jti(jti) if jti else "",
             "rows": rows,
-            "status": status or "all",
+            "total": total,
+            "repo_names": repo_names,
+            "status": selected_status,
             "page": page,
-            "has_next": page * PAGE_SIZE < total,
-            "has_prev": page > 1,
+            "pagination": {
+                "page": page,
+                "has_prev": page > 1,
+                "has_next": page * PAGE_SIZE < total,
+                "prev_url": f"/deliveries?status={selected_status}&page={page - 1}",
+                "next_url": f"/deliveries?status={selected_status}&page={page + 1}",
+            },
             "flash": request.query_params.get("flash"),
             "msg": request.query_params.get("msg"),
             "breadcrumbs": [("Webhook 投递", None)],

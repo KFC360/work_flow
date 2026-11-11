@@ -1,51 +1,144 @@
 {% extends "base.html" %}
+{% from "macros/ui.html" import page_header %}
+{% from "macros/icons.html" import icon %}
 {% block title %}{{ repo.github_full_name }} · 仓库{% endblock %}
+
+{% block page_header %}
+{% call page_header(repo.github_full_name, 'GitHub 资料只读同步；服务器项目路径与文档目录在本页配置。', '仓库') %}
+  {% if repo.html_url %}
+  <a class="btn btn-sm btn-outline gap-1.5" href="{{ repo.html_url }}" target="_blank" rel="noopener">{{ icon('external-link') }}<span>在 GitHub 打开</span></a>
+  {% endif %}
+  <a class="btn btn-sm btn-primary gap-1.5" href="/repos/{{ repo.id }}/issues">{{ icon('issue') }}<span>查看 Issue</span></a>
+{% endcall %}
+{% endblock %}
+
 {% block content %}
-<h1 class="text-2xl font-semibold font-mono-data">{{ repo.github_full_name }}</h1>
-{% if origin_mismatch %}
-<div class="alert alert-warning">origin 与 GitHub 仓库名不一致，请先更新服务器 remote 或改填路径。</div>
-{% endif %}
-{% if repo.sync_error %}
-<div class="alert alert-error">同步错误：{{ repo.sync_error }}</div>
-{% endif %}
-{% if form_disabled %}
-<div class="alert alert-info">有进行中的任务，暂不可改路径。</div>
+<div class="mb-4 flex flex-wrap items-center gap-2">
+  {% if repo.private %}
+  <span class="badge badge-sm badge-ghost gap-1 whitespace-nowrap">{{ icon('lock', 'h-3.5 w-3.5') }}<span>私有</span></span>
+  {% else %}
+  <span class="badge badge-sm badge-ghost gap-1 whitespace-nowrap">{{ icon('circle-dot', 'h-3.5 w-3.5') }}<span>公开</span></span>
+  {% endif %}
+  <span class="badge badge-sm badge-ghost gap-1 whitespace-nowrap">{{ icon('branch', 'h-3.5 w-3.5') }}<span>{{ repo.default_branch }}</span></span>
+  <span class="badge badge-sm badge-ghost gap-1 whitespace-nowrap">{{ icon('clock', 'h-3.5 w-3.5') }}<span>同步于 {{ repo.synced_at | gw_time }}</span></span>
+</div>
+
+{% if field_errors %}
+<div class="alert alert-error mb-4 flex items-start gap-2 text-sm" role="alert">
+  {{ icon('alert-triangle', 'h-5 w-5 shrink-0') }}
+  <span>请修正下列字段后重试。</span>
+</div>
 {% endif %}
 
-<div class="grid md:grid-cols-2 gap-4">
-  <div class="card bg-base-100 shadow">
-    <div class="card-body">
-      <h2 class="card-title text-base">GitHub 资料</h2>
-      <p>{{ repo.description or '无描述' }}</p>
-      <p>默认分支：<span class="font-mono-data">{{ repo.default_branch }}</span></p>
-      <p>私有：{{ '是' if repo.private else '否' }}</p>
-      <p>最近同步：{{ repo.synced_at or '—' }}</p>
-      {% if repo.html_url %}<a class="link" href="{{ repo.html_url }}" target="_blank" rel="noopener">打开 GitHub</a>{% endif %}
-      <a class="btn btn-sm mt-2 w-fit" href="/repos/{{ repo.id }}/issues">查看 Issue</a>
-    </div>
-  </div>
-  <div class="card bg-base-100 shadow">
-    <div class="card-body">
-      <h2 class="card-title text-base">本地配置</h2>
-      {% if field_errors %}
-      <div class="alert alert-error">请修正下列字段后重试。</div>
-      {% endif %}
-      <form method="post" action="/repos/{{ repo.id }}" class="space-y-3" onsubmit="this.querySelector('button[type=submit]').disabled=true">
+{% if origin_mismatch %}
+<div class="alert alert-warning mb-4 flex items-start gap-2 text-sm" role="alert">
+  {{ icon('alert-triangle', 'h-5 w-5 shrink-0') }}
+  <span>origin 与 GitHub 仓库名不一致，请先更新服务器 remote 或改填路径。</span>
+</div>
+{% endif %}
+{% if repo.sync_error %}
+<div class="alert alert-error mb-4 flex items-start gap-2 text-sm" role="alert">
+  {{ icon('alert-triangle', 'h-5 w-5 shrink-0') }}
+  <span class="min-w-0 break-words whitespace-pre-line">同步错误：{{ repo.sync_error }}</span>
+</div>
+{% endif %}
+{% if form_disabled %}
+<div class="alert alert-info mb-4 flex items-start gap-2 text-sm" role="status">
+  {{ icon('info', 'h-5 w-5 shrink-0') }}
+  <span>有进行中的任务，暂不可改路径。</span>
+</div>
+{% endif %}
+
+{% set first_error = 'local_path' if field_errors.local_path else ('doc_dir' if field_errors.doc_dir else '') %}
+<div class="grid gap-6 lg:grid-cols-3">
+  <section class="gw-card order-1 p-5 lg:order-2 lg:col-span-1" aria-labelledby="local-config-title">
+    <h2 id="local-config-title" class="mb-4 flex items-center gap-2 text-base font-semibold text-slate-900">
+      {{ icon('settings', 'h-5 w-5 text-slate-500') }}<span>本地配置</span>
+    </h2>
+    <form method="post" action="/repos/{{ repo.id }}" class="space-y-4">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+      <div>
+        <label class="mb-1 block text-sm font-medium text-slate-800" for="local_path">服务器项目路径</label>
+        <input
+          id="local_path"
+          name="local_path"
+          class="input input-bordered w-full font-mono-data text-sm {% if field_errors.local_path %}input-error{% endif %}"
+          value="{{ local_path }}"
+          aria-describedby="local_path-help{% if field_errors.local_path %} local_path-error{% endif %}"
+          {% if field_errors.local_path %}aria-invalid="true"{% endif %}
+          {% if form_disabled %}disabled{% endif %}
+          {% if first_error == 'local_path' %}autofocus{% endif %}
+        />
+        <p id="local_path-help" class="mt-1 text-xs leading-5 text-slate-500">须为已 clone 的 git 顶层绝对路径；origin 必须匹配 <code>{{ repo.github_full_name }}</code>。</p>
+        {% if field_errors.local_path %}
+        <p id="local_path-error" class="mt-1 text-sm text-red-600">{{ field_errors.local_path }}</p>
+        {% endif %}
+      </div>
+      <div>
+        <label class="mb-1 block text-sm font-medium text-slate-800" for="doc_dir">文档目录</label>
+        <input
+          id="doc_dir"
+          name="doc_dir"
+          class="input input-bordered w-full font-mono-data text-sm {% if field_errors.doc_dir %}input-error{% endif %}"
+          value="{{ doc_dir }}"
+          aria-describedby="doc_dir-help{% if field_errors.doc_dir %} doc_dir-error{% endif %}"
+          {% if field_errors.doc_dir %}aria-invalid="true"{% endif %}
+          {% if form_disabled %}disabled{% endif %}
+          {% if first_error == 'doc_dir' %}autofocus{% endif %}
+        />
+        <p id="doc_dir-help" class="mt-1 text-xs leading-5 text-slate-500">相对路径，默认 <code>docs</code>；基石入口为 <code>{doc_dir}/README.md</code>。</p>
+        {% if field_errors.doc_dir %}
+        <p id="doc_dir-error" class="mt-1 text-sm text-red-600">{{ field_errors.doc_dir }}</p>
+        {% endif %}
+      </div>
+      <button type="submit" class="btn btn-primary btn-sm gap-1.5" data-gw-submit {% if form_disabled %}disabled{% endif %}>
+        {{ icon('check') }}<span>保存</span>
+      </button>
+    </form>
+  </section>
+
+  <section class="gw-card order-2 p-5 lg:order-1 lg:col-span-2" aria-labelledby="github-meta-title">
+    <div class="mb-4 flex flex-wrap items-center justify-between gap-2">
+      <h2 id="github-meta-title" class="flex items-center gap-2 text-base font-semibold text-slate-900">
+        {{ icon('repo', 'h-5 w-5 text-slate-500') }}<span>GitHub 资料</span>
+      </h2>
+      <form method="post" action="/repos/{{ repo.id }}/resync" class="inline-flex">
         <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
-        <div class="form-control">
-          <label class="label" for="local_path"><span class="label-text">服务器项目路径</span></label>
-          <input id="local_path" name="local_path" class="input input-bordered {% if field_errors.local_path %}input-error{% endif %}" value="{{ local_path }}" {% if form_disabled %}disabled{% endif %} />
-          {% if field_errors.local_path %}<p class="text-error text-sm">{{ field_errors.local_path }}</p>{% endif %}
-          <p class="text-xs opacity-70 mt-1">须为已 clone 的 git 顶层绝对路径</p>
-        </div>
-        <div class="form-control">
-          <label class="label" for="doc_dir"><span class="label-text">文档目录</span></label>
-          <input id="doc_dir" name="doc_dir" class="input input-bordered {% if field_errors.doc_dir %}input-error{% endif %}" value="{{ doc_dir }}" {% if form_disabled %}disabled{% endif %} />
-          {% if field_errors.doc_dir %}<p class="text-error text-sm">{{ field_errors.doc_dir }}</p>{% endif %}
-        </div>
-        <button type="submit" class="btn btn-primary" {% if form_disabled %}disabled{% endif %}>保存</button>
+        <button type="submit" class="btn btn-outline btn-sm gap-1.5" data-gw-submit>{{ icon('refresh') }}<span>重新同步</span></button>
       </form>
     </div>
-  </div>
+    <p class="mb-4 break-words text-sm leading-6 {% if repo.description %}text-slate-700{% else %}text-slate-500{% endif %}">{{ repo.description or '无描述' }}</p>
+    {% if repo.sync_error %}
+    <p class="mb-4 flex items-start gap-1.5 text-xs leading-5 text-amber-700">{{ icon('alert-triangle', 'h-4 w-4 shrink-0') }}<span>最近一次同步失败，详见页顶错误。</span></p>
+    {% endif %}
+    <dl class="grid gap-x-6 gap-y-3 text-sm sm:grid-cols-2">
+      <div>
+        <dt class="text-xs text-slate-500">完整名称</dt>
+        <dd class="mt-0.5 break-all font-mono-data text-slate-900">{{ repo.github_full_name }}</dd>
+      </div>
+      <div>
+        <dt class="text-xs text-slate-500">默认分支</dt>
+        <dd class="mt-0.5"><code class="rounded bg-slate-100 px-1.5 py-0.5 text-xs text-slate-700">{{ repo.default_branch }}</code></dd>
+      </div>
+      <div>
+        <dt class="text-xs text-slate-500">是否私有</dt>
+        <dd class="mt-0.5 text-slate-900">{{ '私有' if repo.private else '公开' }}</dd>
+      </div>
+      <div>
+        <dt class="text-xs text-slate-500">最近同步</dt>
+        <dd class="mt-0.5 font-mono-data text-xs text-slate-700"{% if repo.synced_at %} title="{{ repo.synced_at | gw_iso }}"{% endif %}>{{ repo.synced_at | gw_time }} UTC</dd>
+      </div>
+      <div class="sm:col-span-2">
+        <dt class="text-xs text-slate-500">GitHub 链接</dt>
+        <dd class="mt-0.5 break-all">
+          {% if repo.html_url %}
+          <a class="link link-hover font-mono-data text-xs text-sky-700" href="{{ repo.html_url }}" target="_blank" rel="noopener">{{ repo.html_url }}</a>
+          {% else %}
+          <span class="text-slate-500">—</span>
+          {% endif %}
+        </dd>
+      </div>
+    </dl>
+  </section>
 </div>
 {% endblock %}

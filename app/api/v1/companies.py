@@ -4,12 +4,11 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import HTMLResponse
-from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session
 
 from app.core.exceptions import LoginRedirect
 from app.core.security import csrf_token_for_jti
-from app.core.settings import PROJECT_ROOT
+from app.core.templating import build_templates
 from app.crud import company as company_crud
 from app.crud import repository as repository_crud
 from app.database.connect import get_db
@@ -17,7 +16,7 @@ from app.dependencies.auth import require_page_user
 from app.models.user import User
 
 router = APIRouter(tags=["companies"])
-templates = Jinja2Templates(directory=str(PROJECT_ROOT / "app" / "templates"))
+templates = build_templates()
 PAGE_SIZE = 50
 
 
@@ -41,6 +40,7 @@ def company_list(
 ):
     page = max(page, 1)
     companies = company_crud.list_companies(db, offset=(page - 1) * PAGE_SIZE, limit=PAGE_SIZE)
+    total = company_crud.count_companies(db)
     rows = [
         {
             "company": c,
@@ -55,7 +55,15 @@ def company_list(
         _ctx(
             user,
             rows=rows,
+            total=total,
             page=page,
+            pagination={
+                "page": page,
+                "has_prev": page > 1,
+                "has_next": page * PAGE_SIZE < total,
+                "prev_url": f"/?page={page - 1}",
+                "next_url": f"/?page={page + 1}",
+            },
             flash=request.query_params.get("flash"),
             msg=request.query_params.get("msg"),
             breadcrumbs=None,
@@ -83,6 +91,7 @@ def company_repos(
     repos = repository_crud.list_by_company(
         db, company_id, offset=(page - 1) * PAGE_SIZE, limit=PAGE_SIZE
     )
+    total = company_crud.repo_count(db, company_id)
     rows = [
         {
             "repo": r,
@@ -97,7 +106,15 @@ def company_repos(
             user,
             company=company,
             rows=rows,
+            total=total,
             page=page,
+            pagination={
+                "page": page,
+                "has_prev": page > 1,
+                "has_next": page * PAGE_SIZE < total,
+                "prev_url": f"/companies/{company_id}?page={page - 1}",
+                "next_url": f"/companies/{company_id}?page={page + 1}",
+            },
             flash=request.query_params.get("flash"),
             msg=request.query_params.get("msg"),
             breadcrumbs=[("公司", "/"), (company.name, None)],

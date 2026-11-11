@@ -5,7 +5,6 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, Form, Request, Response, status
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.security import OAuth2PasswordRequestForm
-from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session
 
 from app.core.security import (
@@ -15,7 +14,8 @@ from app.core.security import (
     decode_access_token,
     verify_password,
 )
-from app.core.settings import PROJECT_ROOT, get_settings
+from app.core.settings import get_settings
+from app.core.templating import build_templates
 from app.crud import user as user_crud
 from app.database.connect import get_db
 from app.dependencies.auth import get_optional_page_user, require_csrf
@@ -23,7 +23,7 @@ from app.models.user import User
 from app.schemas.token import Token
 
 router = APIRouter(tags=["auth"])
-templates = Jinja2Templates(directory=str(PROJECT_ROOT / "app" / "templates"))
+templates = build_templates()
 
 
 def _set_auth_cookie(response: Response, token: str, request: Request) -> None:
@@ -79,7 +79,7 @@ def login_page(
     return templates.TemplateResponse(
         request,
         "login.html",
-        {"error": None},
+        {"error": None, "username": ""},
     )
 
 
@@ -95,14 +95,14 @@ def login_submit(
         return templates.TemplateResponse(
             request,
             "login.html",
-            {"error": "账号已停用"},
+            {"error": "账号已停用", "username": username},
             status_code=200,
         )
     if user is None:
         return templates.TemplateResponse(
             request,
             "login.html",
-            {"error": "用户名或口令不正确"},
+            {"error": "用户名或口令不正确", "username": username},
             status_code=200,
         )
     token = create_access_token(subject=user.username)

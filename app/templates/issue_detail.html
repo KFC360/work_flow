@@ -1,130 +1,288 @@
 {% extends "base.html" %}
+{% from "macros/ui.html" import page_header, kind_badge, issue_status_badge, github_state_badge, job_badge, phase_label, worker_badge, issue_actions, live_status, action_label %}
+{% from "macros/icons.html" import icon %}
 {% block title %}#{{ issue.number }} {{ issue.title }}{% endblock %}
+
+{% block page_header %}
+{% call page_header('#' ~ issue.number ~ ' ' ~ issue.title, '', 'Issue · ' ~ repo.github_full_name) %}
+  {% if issue.html_url %}
+  <a class="btn btn-sm btn-outline gap-1.5" href="{{ issue.html_url }}" target="_blank" rel="noopener">{{ icon('external-link') }}<span>在 GitHub 打开</span></a>
+  {% endif %}
+{% endcall %}
+{% endblock %}
+
 {% block content %}
-<div class="flex flex-wrap justify-between gap-2">
-  <h1 class="text-2xl font-semibold">#{{ issue.number }} {{ issue.title }}</h1>
-  <a class="link" href="{{ issue.html_url }}" target="_blank" rel="noopener">GitHub</a>
+<div id="issue-session-error" class="alert alert-error mb-4 hidden items-start gap-2 text-sm" role="alert">
+  {{ icon('alert-triangle', 'h-5 w-5 shrink-0') }}
+  <span>会话已失效，请 <a class="link font-medium underline" href="/login">重新登录</a>。</span>
 </div>
 
 {% if foundation_missing %}
-<div class="alert alert-warning">基石入口 {{ foundation_path }} 在 origin/{{ repo.default_branch }} 上不存在。编写文档仍可进行，请在迭代文档「待确认」中记录。</div>
+<div class="alert alert-warning mb-4 flex items-start gap-2 text-sm" role="alert">
+  {{ icon('alert-triangle', 'h-5 w-5 shrink-0') }}
+  <span>基石入口 {{ foundation_path }} 在 origin/{{ repo.default_branch }} 上不存在。编写文档仍可进行，请在迭代文档「待确认」中记录。</span>
+</div>
 {% endif %}
 {% if stale_doc %}
-<div class="alert alert-warning">Issue 在文档完成后有更新，如需同步请重新编写文档。</div>
+<div class="alert alert-warning mb-4 flex items-start gap-2 text-sm" role="alert">
+  {{ icon('alert-triangle', 'h-5 w-5 shrink-0') }}
+  <span>Issue 在文档完成后有更新，如需同步请重新编写文档。</span>
+</div>
 {% endif %}
 {% if label_mismatch %}
-<div class="alert alert-warning">GitHub 标签与本地类型不一致。</div>
+<div class="alert alert-warning mb-4 flex items-start gap-2 text-sm" role="alert">
+  {{ icon('alert-triangle', 'h-5 w-5 shrink-0') }}
+  <span>GitHub 标签与本地类型不一致。</span>
+</div>
 {% endif %}
 {% if issue.last_error %}
-<div class="alert alert-error">{{ issue.last_error }}</div>
+<div class="alert alert-error mb-4 flex items-start gap-2 text-sm" role="alert">
+  {{ icon('alert-triangle', 'h-5 w-5 shrink-0') }}
+  <span class="min-w-0 break-words whitespace-pre-line">{{ issue.last_error }}</span>
+</div>
 {% endif %}
 
-<div class="flex flex-wrap gap-2" id="issue-actions">
-  {% for act in actions %}
-    {% if act.kind == 'link' %}
-      <a class="btn btn-sm" href="{{ act.href }}" {% if act.href and act.href.startswith('http') %}target="_blank" rel="noopener"{% endif %}>{{ act.label }}</a>
-    {% elif act.kind == 'text' %}
-      <button class="btn btn-sm btn-disabled" disabled>{{ act.label }}</button>
-    {% else %}
-      <form method="post" action="{{ act.form_action }}" {% if act.confirm %}onsubmit="return confirm('{{ act.confirm }}')"{% endif %}>
-        <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
-        <button class="btn btn-sm btn-primary" type="submit">{{ act.label }}</button>
-      </form>
-    {% endif %}
-  {% endfor %}
-</div>
+<section class="gw-card mb-4 p-4" aria-label="流程操作">
+  {% if actions %}
+    {{ issue_actions(actions, csrf_token) }}
+  {% else %}
+    <p class="text-sm text-slate-500">当前状态没有可执行的流程操作。</p>
+  {% endif %}
+</section>
 
-<div class="grid lg:grid-cols-2 gap-4">
-  <div class="card bg-base-100 shadow">
-    <div class="card-body">
-      <h2 class="card-title text-base">元数据</h2>
-      <div id="issue-status" aria-live="polite" class="space-y-1 text-sm">
-        <p>类型：{{ kind_label }}</p>
-        <p>流程状态：<span class="badge">{{ status_label }}</span></p>
-        <p>GitHub：{{ issue.github_state }}</p>
-        <p>标签：{{ issue.label_names | join(', ') }}</p>
-        <p>分支：<span class="font-mono-data">{{ issue.branch_name or '—' }}</span></p>
-        {% if issue.pr_url %}<p>PR：<a class="link" href="{{ issue.pr_url }}" target="_blank" rel="noopener">{{ issue.pr_url }}</a></p>{% endif %}
-        {% if latest_job %}
-        <p>最近任务：{{ latest_job.action }} / {{ latest_job.status }}</p>
-        {% if latest_job.action == 'generate_code' and issue.codegen_phase %}
-        <p>阶段：{{ issue.codegen_phase }}</p>
+<section class="gw-card mb-4 p-5" aria-labelledby="summary-title">
+  <h2 id="summary-title" class="sr-only">Issue 摘要</h2>
+  <dl class="grid grid-cols-2 gap-4 text-sm md:grid-cols-4">
+    <div>
+      <dt class="text-xs text-slate-500">类型</dt>
+      <dd class="mt-1">{{ kind_badge(issue.kind) }}</dd>
+    </div>
+    <div>
+      <dt class="text-xs text-slate-500">流程状态</dt>
+      <dd class="mt-1">{{ issue_status_badge(issue.status, status_label) }}</dd>
+    </div>
+    <div>
+      <dt class="text-xs text-slate-500">GitHub</dt>
+      <dd class="mt-1">{{ github_state_badge(issue.github_state) }}</dd>
+    </div>
+    <div>
+      <dt class="text-xs text-slate-500">作者</dt>
+      <dd class="mt-1 break-all text-slate-900">{{ ('@' ~ issue.author_login) if issue.author_login else '—' }}</dd>
+    </div>
+    <div>
+      <dt class="text-xs text-slate-500">更新</dt>
+      <dd class="mt-1 font-mono-data text-xs text-slate-700"{% if issue.github_updated_at or issue.updated_at %} title="{{ (issue.github_updated_at or issue.updated_at) | gw_iso }}"{% endif %}>{{ (issue.github_updated_at or issue.updated_at) | gw_time }} UTC</dd>
+    </div>
+    <div>
+      <dt class="text-xs text-slate-500">迭代</dt>
+      <dd class="mt-1 font-mono-data text-slate-900">{{ issue.iteration_no | iteration_label }}</dd>
+    </div>
+    <div>
+      <dt class="text-xs text-slate-500">分支</dt>
+      <dd class="mt-1 break-all font-mono-data text-xs text-slate-700">{{ issue.branch_name or '—' }}</dd>
+    </div>
+    <div>
+      <dt class="text-xs text-slate-500">Pull Request</dt>
+      <dd class="mt-1">
+        {% if issue.pr_url %}
+        <a class="link link-hover text-sky-700" href="{{ issue.pr_url }}" target="_blank" rel="noopener">查看 PR</a>
+        {% else %}
+        <span class="text-slate-500">—</span>
         {% endif %}
-        {% endif %}
-        {% if related_worker_label %}
-        <p>Worker：{{ related_worker_label }}</p>
-        {% endif %}
+      </dd>
+    </div>
+  </dl>
+</section>
+
+<div class="grid gap-4 xl:grid-cols-3">
+  <div class="space-y-4 xl:col-span-2">
+    <section class="gw-card p-5" aria-labelledby="issue-body-title">
+      <div class="mb-3 flex flex-wrap items-baseline justify-between gap-2">
+        <h2 id="issue-body-title" class="text-base font-semibold text-slate-900">Issue 正文</h2>
+        <p class="text-xs text-slate-500">
+          {{ ('@' ~ issue.author_login) if issue.author_login else '' }}{% if issue.author_login and issue.github_updated_at %} · {% endif %}{% if issue.github_updated_at %}更新于 {{ issue.github_updated_at | gw_time }} UTC{% endif %}
+        </p>
       </div>
-    </div>
+      {% if issue.body %}
+      <pre class="whitespace-pre-wrap break-words font-sans text-sm leading-6 text-slate-800">{{ issue.body }}</pre>
+      {% else %}
+      <p class="text-sm text-slate-500">该 Issue 没有正文。</p>
+      {% endif %}
+    </section>
+
+    {% if issue.design_doc_path %}
+    <section class="gw-card p-5" aria-labelledby="design-doc-title">
+      <div class="mb-3 flex flex-wrap items-center gap-2">
+        <h2 id="design-doc-title" class="text-base font-semibold text-slate-900">设计文档</h2>
+        <code class="break-all rounded bg-slate-100 px-1.5 py-0.5 text-xs text-slate-700">{{ issue.design_doc_path }}</code>
+        {% if issue.iteration_no %}<span class="badge badge-sm badge-ghost font-mono-data">{{ issue.iteration_no | iteration_label }}</span>{% endif %}
+      </div>
+      <pre class="max-h-[32rem] overflow-auto whitespace-pre-wrap break-words rounded-lg border border-slate-200 bg-slate-50 p-3 font-mono text-xs leading-relaxed text-slate-800">{{ issue.design_doc_text or '' }}</pre>
+    </section>
+    {% endif %}
   </div>
-  <div class="card bg-base-100 shadow">
-    <div class="card-body">
-      <h2 class="card-title text-base">Issue 正文</h2>
-      <pre class="whitespace-pre-wrap text-sm">{{ issue.body }}</pre>
-    </div>
+
+  <div class="space-y-4 xl:col-span-1">
+    <section class="gw-card p-5" aria-labelledby="task-title">
+      <h2 id="task-title" class="mb-4 flex items-center gap-2 text-base font-semibold text-slate-900">
+        {{ icon('terminal', 'h-5 w-5 text-slate-500') }}<span>任务与 Worker</span>
+      </h2>
+      <div id="issue-live-status" aria-live="polite">
+        {{ live_status(issue, latest_job, log_warning, worker_status, worker_text) }}
+      </div>
+      {% if latest_job %}
+      <dl class="mt-4 grid grid-cols-2 gap-2 border-t border-slate-200 pt-4 text-xs">
+        <div>
+          <dt class="text-slate-500">开始</dt>
+          <dd class="mt-0.5 font-mono-data text-slate-700"{% if latest_job.started_at %} title="{{ latest_job.started_at | gw_iso }}"{% endif %}>{{ latest_job.started_at | gw_time }} UTC</dd>
+        </div>
+        <div>
+          <dt class="text-slate-500">结束</dt>
+          <dd class="mt-0.5 font-mono-data text-slate-700"{% if latest_job.finished_at %} title="{{ latest_job.finished_at | gw_iso }}"{% endif %}>{{ latest_job.finished_at | gw_time }} UTC</dd>
+        </div>
+        {% if latest_job.exit_code is not none %}
+        <div>
+          <dt class="text-slate-500">退出码</dt>
+          <dd class="mt-0.5 font-mono-data text-slate-700">{{ latest_job.exit_code }}</dd>
+        </div>
+        {% endif %}
+        <div>
+          <dt class="text-slate-500">任务编号</dt>
+          <dd class="mt-0.5 font-mono-data text-slate-700">#{{ latest_job.id }}</dd>
+        </div>
+      </dl>
+      {% endif %}
+      {% if worker_updated_at %}
+      <p class="mt-3 text-xs text-slate-500">最近心跳：<span class="font-mono-data">{{ worker_updated_at | gw_time }} UTC</span></p>
+      {% endif %}
+    </section>
   </div>
 </div>
 
-{% if issue.design_doc_path %}
-<div class="card bg-base-100 shadow">
-  <div class="card-body">
-    <h2 class="card-title text-base">设计文档 <span class="font-mono-data text-sm font-normal">{{ issue.design_doc_path }}</span></h2>
-    <pre class="whitespace-pre-wrap font-mono-data text-sm bg-base-200 p-3 rounded">{{ issue.design_doc_text or '' }}</pre>
+<section class="gw-card mt-4 p-5" aria-labelledby="log-title">
+  <div class="mb-3 flex flex-wrap items-center justify-between gap-2">
+    <div class="flex flex-wrap items-center gap-2">
+      <h2 id="log-title" class="flex items-center gap-2 text-base font-semibold text-slate-900">
+        {{ icon('terminal', 'h-5 w-5 text-slate-500') }}<span>最新任务日志</span>
+      </h2>
+      {% if latest_job %}
+      <span class="font-mono-data text-xs text-slate-500">job #{{ latest_job.id }}</span>
+      <span class="text-xs text-slate-600">{{ action_label(latest_job.action) }}</span>
+      {{ job_badge(latest_job.status) }}
+      {% endif %}
+    </div>
+    {% if polling %}
+    <span id="issue-live-indicator" class="flex items-center gap-1.5 text-xs text-slate-500">
+      <span class="loading loading-spinner loading-xs" aria-hidden="true"></span>
+      <span>自动刷新中</span>
+    </span>
+    {% endif %}
   </div>
-</div>
-{% endif %}
-
-<div class="card bg-base-100 shadow">
-  <div class="card-body">
-    <h2 class="card-title text-base">任务日志</h2>
-    <pre id="issue-log" class="whitespace-pre-wrap font-mono-data text-xs bg-base-200 p-3 rounded max-h-96 overflow-auto">{{ log_text or '（暂无日志）' }}</pre>
+  <div class="relative">
+    <pre
+      id="issue-log"
+      tabindex="0"
+      aria-label="任务日志"
+      class="max-h-96 overflow-auto whitespace-pre-wrap break-words rounded-xl bg-slate-950 p-4 font-mono text-xs leading-relaxed text-slate-100"
+    >{{ log_text or '（暂无日志）' }}</pre>
+    <button id="issue-log-jump" type="button" class="btn btn-primary btn-sm absolute bottom-3 right-3 shadow-lg" hidden>有新日志，回到底部</button>
   </div>
-</div>
+  <p id="issue-log-updated" class="sr-only">日志已更新</p>
+</section>
 {% endblock %}
 
 {% block scripts %}
 {% if polling %}
 <script>
-(function () {
-  function sessionExpired() {
-    clearInterval(timer);
-    alert('会话已失效，请重新登录');
-    window.location = '/login';
-  }
-  var timer = setInterval(function () {
-    fetch('/issues/{{ issue.id }}/status-fragment', {
-      credentials: 'same-origin',
-      redirect: 'manual',
-      headers: { 'Accept': 'text/html', 'X-Requested-With': 'fetch' },
-    })
-      .then(function (r) {
-        if (r.type === 'opaqueredirect' || r.status === 401 || r.status === 303 || r.status === 302) {
-          sessionExpired();
-          return null;
-        }
-        if (!r.ok) return null;
-        return r.text();
+  (function () {
+    var logBox = document.getElementById('issue-log');
+    var jump = document.getElementById('issue-log-jump');
+    var sessionError = document.getElementById('issue-session-error');
+    var indicator = document.getElementById('issue-live-indicator');
+    var timer = null;
+
+    function hideIndicator() {
+      if (indicator) indicator.hidden = true;
+    }
+
+    function atBottom() {
+      if (!logBox) return true;
+      return logBox.scrollHeight - logBox.scrollTop - logBox.clientHeight <= 32;
+    }
+
+    function stopWithSessionError() {
+      if (timer) window.clearInterval(timer);
+      timer = null;
+      hideIndicator();
+      if (sessionError) {
+        sessionError.hidden = false;
+        sessionError.classList.remove('hidden');
+      }
+    }
+
+    if (jump && logBox) {
+      jump.addEventListener('click', function () {
+        logBox.scrollTop = logBox.scrollHeight;
+        jump.hidden = true;
+        logBox.focus();
+      });
+    }
+
+    if (logBox) logBox.scrollTop = logBox.scrollHeight;
+
+    function tick() {
+      fetch('/issues/{{ issue.id }}/status-fragment', {
+        credentials: 'same-origin',
+        redirect: 'manual',
+        headers: { 'Accept': 'text/html', 'X-Requested-With': 'fetch' },
       })
-      .then(function (html) {
-        if (!html) return;
-        // Never inject a full login page into the metadata panel.
-        if (html.indexOf('name="password"') !== -1 || html.indexOf('action="/login"') !== -1) {
-          sessionExpired();
-          return;
-        }
-        var box = document.getElementById('issue-status');
-        if (box) box.innerHTML = html;
-        var live = document.getElementById('issue-log-live');
-        var logBox = document.getElementById('issue-log');
-        if (live && logBox) {
-          logBox.textContent = live.textContent;
-          logBox.scrollTop = logBox.scrollHeight;
-        }
-        if (html.indexOf('data-done="1"') !== -1) clearInterval(timer);
-      })
-      .catch(function () {});
-  }, 3000);
-})();
+        .then(function (response) {
+          if (response.type === 'opaqueredirect' || response.status === 401 || response.status === 303 || response.status === 302) {
+            stopWithSessionError();
+            return null;
+          }
+          if (!response.ok) return null;
+          return response.text();
+        })
+        .then(function (html) {
+          if (!html) return;
+          if (html.indexOf('name="password"') !== -1 || html.indexOf('action="/login"') !== -1) {
+            stopWithSessionError();
+            return;
+          }
+          var parsed = new DOMParser().parseFromString(html, 'text/html');
+          var statusBox = document.getElementById('issue-live-status');
+          var nextStatus = parsed.getElementById('issue-live-status');
+          if (statusBox && nextStatus) statusBox.innerHTML = nextStatus.innerHTML;
+
+          var nextLog = parsed.getElementById('issue-log-live');
+          if (nextLog && logBox) {
+            var stick = atBottom();
+            var text = nextLog.textContent || '';
+            if (!text) text = '（暂无日志）';
+            if (logBox.textContent !== text) {
+              logBox.textContent = text;
+              if (stick) {
+                logBox.scrollTop = logBox.scrollHeight;
+                if (jump) jump.hidden = true;
+              } else if (jump) {
+                jump.hidden = false;
+              }
+            }
+          }
+
+          var done = parsed.querySelector('[data-done]');
+          if (done && done.getAttribute('data-done') === '1' && timer) {
+            window.clearInterval(timer);
+            timer = null;
+            hideIndicator();
+          }
+        })
+        .catch(function () {});
+    }
+
+    timer = window.setInterval(tick, 5000);
+  })();
 </script>
 {% endif %}
 {% endblock %}

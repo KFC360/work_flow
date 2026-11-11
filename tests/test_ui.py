@@ -1,0 +1,259 @@
+from __future__ import annotations
+
+from datetime import datetime, timezone
+from pathlib import Path
+
+from fastapi.testclient import TestClient
+from sqlalchemy.orm import Session
+
+from app.core.security import COOKIE_NAME, create_access_token, csrf_token_for_jti, decode_access_token
+from app.crud import company as company_crud
+from app.crud import issue as issue_crud
+from app.crud import job as job_crud
+from app.crud import repository as repository_crud
+from app.crud import user as user_crud
+from app.crud import webhook_delivery as delivery_crud
+
+
+def _login(client: TestClient, db: Session) -> str:
+    user_crud.ensure_admin_user(db)
+    token = create_access_token("admin")
+    client.cookies.set(COOKIE_NAME, token)
+    return csrf_token_for_jti(decode_access_token(token)["jti"])
+
+
+def _seed_company_repo(db: Session, *, account_type: str = "User"):
+    company = company_crud.upsert_from_github(
+        db,
+        github_account_id=101,
+        account_type=account_type,
+        login="acme",
+        name="Acme",
+        description="示例公司",
+        avatar_url=None,
+        html_url="https://github.com/acme",
+    )
+    repo = repository_crud.upsert_from_github(
+        db,
+        company_id=company.id,
+        github_repo_id=1010,
+        name="demo",
+        github_full_name="acme/demo",
+        description="示例仓库",
+        html_url="https://github.com/acme/demo",
+        default_branch="main",
+        private=False,
+    )
+    return company, repo
+
+
+def _seed_issue(db: Session, repo, *, number: int, status: str, kind: str, title: str):
+    issue = issue_crud.upsert_from_webhook(
+        db,
+        repository_id=repo.id,
+        github_issue_id=5000 + number,
+        number=number,
+        title=title,
+        body="正文第一行\n正文第二行",
+        html_url=f"https://github.com/acme/demo/issues/{number}",
+        author_login="dev",
+        github_state="open",
+        label_names=[],
+        github_updated_at=datetime(2026, 11, 10, 8, 30, tzinfo=timezone.utc),
+        action="opened",
+    )
+    issue.status = status
+    issue.kind = kind
+    issue.iteration_no = 1
+    issue.design_doc_path = "docs/v0001-1/design.md"
+    issue.design_doc_text = "# design"
+    db.commit()
+    db.refresh(issue)
+    return issue
+
+
+def test_console_pages_render(client: TestClient, db: Session, tmp_path: Path, monkeypatch) -> None:
+    csrf = _login(client, db)
+    company, repo = _seed_company_repo(db)
+    repo.local_path = str(tmp_path)
+    db.commit()
+    issue = _seed_issue(db, repo, number=1, status="recorded", kind="feature", title="首个功能")
+    job = job_crud.enqueue(db, issue_id=issue.id, repository_id=repo.id, action="write_doc")
+    job.status = "succeeded"
+    job.finished_at = datetime(2026, 11, 10, 9, 0, tzinfo=timezone.utc)
+    job.log_excerpt = "job-log-line"
+    db.commit()
+    monkeypatch.setattr("app.services.actions.read_agent", lambda: "claude")
+
+    resp = client.get("/")
+    assert resp.status_code == 200
+    assert "个人账号" in resp.text
+    assert "Acme" in resp.text
+    assert "总览" in resp.text
+    assert 'aria-current="page"' in resp.text
+
+    resp = client.get(f"/companies/{company.id}")
+    assert resp.status_code == 200
+    assert "acme/demo" in resp.text
+    assert "重新同步" in resp.text
+    assert "共" in resp.text
+
+    resp = client.get(f"/repos/{repo.id}")
+    assert resp.status_code == 200
+    assert "GitHub 资料" in resp.text
+    assert "本地配置" in resp.text
+    assert "服务器项目路径" in resp.text
+    assert 'aria-describedby="local_path-help"' in resp.text
+
+    resp = client.get(f"/repos/{repo.id}/issues")
+    assert resp.status_code == 200
+    assert "应用筛选" in resp.text
+    assert "首个功能" in resp.text
+    assert "编写文档" in resp.text
+    assert "data-gw-confirm" in resp.text
+    assert 'data-confirm-title="编写设计文档"' in resp.text
+    assert f'name="csrf_token" value="{csrf}"' in resp.text
+
+    resp = client.get(f"/issues/{issue.id}")
+    assert resp.status_code == 200
+    assert "任务与 Worker" in resp.text
+    assert 'id="issue-live-status"' in resp.text
+    assert 'aria-live="polite"' in resp.text
+    assert 'id="issue-log"' in resp.text
+    assert "job-log-line" in resp.text
+    assert "job #" in resp.text
+    assert "onsubmit=\"return confirm" not in resp.text
+    assert resp.text.index("流程操作") < resp.text.index("Issue 摘要") < resp.text.index("最新任务日志")
+
+    resp = client.get("/deliveries")
+    assert resp.status_code == 200
+    assert "还没有投递" in resp.text
+
+    resp = client.get("/settings")
+    assert resp.status_code == 200
+    assert "全站代理" in resp.text
+    assert "Worker 心跳" in resp.text
+
+    resp = client.get("/companies/999999")
+    assert resp.status_code == 404
+    assert "页面未找到" in resp.text
+
+    resp = client.get("/login", follow_redirects=False)
+    assert resp.status_code == 303
+
+
+def test_empty_and_filtered_states(client: TestClient, db: Session) -> None:
+    _login(client, db)
+    company, repo = _seed_company_repo(db)
+    _seed_issue(db, repo, number=2, status="recorded", kind="feature", title="只有功能迭代")
+
+    resp = client.get(f"/repos/{repo.id}/issues?kind=feature&github_state=closed")
+    assert "没有符合筛选的 Issue" in resp.text
+    assert "清除筛选" in resp.text
+
+    resp = client.get(f"/repos/{repo.id}/issues?kind=support")
+    assert "还没有人工介入 Issue" in resp.text
+    assert "只收录" in resp.text
+
+    resp = client.get(f"/companies/{company.id}?page=2")
+    assert resp.status_code == 200
+    assert "该公司下还没有仓库" in resp.text
+
+
+def test_confirm_modal_and_delivery_retry(client: TestClient, db: Session, tmp_path: Path, monkeypatch) -> None:
+    _login(client, db)
+    company, repo = _seed_company_repo(db)
+    repo.local_path = str(tmp_path)
+    db.commit()
+    issue = _seed_issue(db, repo, number=3, status="pending_codegen", kind="feature", title="待生成")
+    monkeypatch.setattr("app.services.actions.read_agent", lambda: "claude")
+
+    resp = client.get(f"/issues/{issue.id}")
+    assert 'id="gw-confirm"' in resp.text
+    assert 'data-gw-confirm' in resp.text
+    assert "确认执行" in resp.text
+    assert "重新编写文档" in resp.text
+
+    ok = delivery_crud.create_queued(
+        db,
+        delivery_id="abcdef1234567890",
+        event="issues",
+        action="opened",
+        repository_id=repo.github_repo_id,
+        payload={},
+    )
+    assert ok is not None
+    delivery_crud.mark_succeeded(db, ok)
+    failed = delivery_crud.create_queued(
+        db,
+        delivery_id="ffff1234567890",
+        event="issues",
+        action="closed",
+        repository_id=repo.github_repo_id,
+        payload={},
+    )
+    assert failed is not None
+    delivery_crud.mark_failed(db, failed, error="token 401 " + "x" * 200)
+
+    resp = client.get("/deliveries")
+    assert resp.status_code == 200
+    assert "acme/demo" in resp.text
+    assert "重试投递" in resp.text
+    assert resp.text.count("重试投递") == 1
+    assert "成功" in resp.text
+    assert 'title="token 401' in resp.text
+
+    resp = client.get("/deliveries?status=failed")
+    assert "没有符合筛选的投递" not in resp.text
+    assert "重试投递" in resp.text
+
+
+def test_status_fragment_polling_contract(client: TestClient, db: Session) -> None:
+    _login(client, db)
+    _company, repo = _seed_company_repo(db)
+    issue = _seed_issue(db, repo, number=4, status="drafting", kind="feature", title="轮询")
+
+    resp = client.get(f"/issues/{issue.id}/status-fragment")
+    assert resp.status_code == 200
+    assert 'data-done="0"' in resp.text
+    assert 'id="issue-live-status"' in resp.text
+    assert 'id="issue-log-live"' in resp.text
+
+    issue.status = "recorded"
+    db.commit()
+    resp = client.get(f"/issues/{issue.id}/status-fragment")
+    assert resp.status_code == 200
+    assert 'data-done="1"' in resp.text
+
+    resp = client.get("/issues/1/status-fragment", follow_redirects=False)
+    assert resp.status_code in {200, 404}
+
+
+def test_issue_list_url_preserves_filters() -> None:
+    from app.api.v1.issues import _issue_list_url
+
+    assert (
+        _issue_list_url(
+            7, kind="feature", status="recorded", github_state="open", page=2
+        )
+        == "/repos/7/issues?kind=feature&status=recorded&github_state=open&page=2"
+    )
+    assert (
+        _issue_list_url(7, kind=None, status=None, github_state="", page=1)
+        == "/repos/7/issues"
+    )
+
+
+def test_login_page_markup(client: TestClient, db: Session) -> None:
+    resp = client.get("/login")
+    assert resp.status_code == 200
+    assert "显示" in resp.text
+    assert 'aria-label="显示口令"' in resp.text
+    assert "从 Issue 到 Pull Request" in resp.text
+
+    user_crud.ensure_admin_user(db)
+    resp = client.post("/login", data={"username": "admin", "password": "bad"})
+    assert resp.status_code == 200
+    assert 'aria-invalid="true"' in resp.text
+    assert "autofocus" in resp.text
+    assert 'value="admin"' in resp.text

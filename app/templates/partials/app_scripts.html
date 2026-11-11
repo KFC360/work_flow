@@ -1,0 +1,96 @@
+<script>
+  (function () {
+    var ok = document.getElementById('flash-ok');
+    if (ok) {
+      window.setTimeout(function () {
+        ok.hidden = true;
+      }, 5000);
+    }
+
+    document.addEventListener('click', function (event) {
+      var dismiss = event.target.closest('[data-gw-dismiss]');
+      if (!dismiss) return;
+      var box = dismiss.closest('[role="status"], [role="alert"]');
+      if (box) box.hidden = true;
+    });
+
+    document.addEventListener('submit', function (event) {
+      var form = event.target;
+      if (!form || form.tagName !== 'FORM') return;
+      if (form.hasAttribute('data-gw-confirm-form') && form.getAttribute('data-gw-confirmed') !== '1') {
+        event.preventDefault();
+        return;
+      }
+      var submitButton = form.querySelector('[data-gw-submit]') || form.querySelector('button');
+      form.setAttribute('aria-busy', 'true');
+      if (submitButton && !submitButton.disabled) {
+        submitButton.disabled = true;
+        submitButton.setAttribute('aria-busy', 'true');
+        if (!submitButton.querySelector('[data-gw-spinner]')) {
+          var spinner = document.createElement('span');
+          spinner.className = 'loading loading-spinner loading-xs';
+          spinner.setAttribute('data-gw-spinner', '');
+          spinner.setAttribute('aria-hidden', 'true');
+          submitButton.prepend(spinner);
+        }
+      }
+      Array.prototype.forEach.call(form.querySelectorAll('button'), function (button) {
+        button.disabled = true;
+      });
+    });
+
+    var dialog = document.getElementById('gw-confirm');
+    if (!dialog) return;
+    var titleEl = document.getElementById('gw-confirm-title');
+    var bodyEl = document.getElementById('gw-confirm-body');
+    var okButton = dialog.querySelector('[data-gw-ok]');
+    var cancelButton = dialog.querySelector('[data-gw-cancel]');
+    var backdrop = dialog.querySelector('[data-gw-backdrop]');
+    var trigger = null;
+    var pendingForm = null;
+
+    function closeDialog() {
+      if (typeof dialog.close === 'function' && dialog.open) dialog.close();
+    }
+
+    document.addEventListener('click', function (event) {
+      var button = event.target.closest('[data-gw-confirm]');
+      if (!button) return;
+      pendingForm = button.closest('form');
+      trigger = button;
+      titleEl.textContent = button.getAttribute('data-confirm-title') || '确认操作';
+      bodyEl.textContent = button.getAttribute('data-confirm-body') || '';
+      if (typeof dialog.showModal === 'function') {
+        dialog.showModal();
+        okButton.focus();
+      }
+    });
+
+    okButton.addEventListener('click', function () {
+      var form = pendingForm;
+      if (!form) {
+        closeDialog();
+        return;
+      }
+      form.setAttribute('data-gw-confirmed', '1');
+      closeDialog();
+      if (typeof form.requestSubmit === 'function') {
+        form.requestSubmit();
+      } else {
+        form.submit();
+      }
+      window.setTimeout(function () {
+        form.removeAttribute('data-gw-confirmed');
+      }, 0);
+    });
+
+    cancelButton.addEventListener('click', closeDialog);
+    if (backdrop) backdrop.addEventListener('click', closeDialog);
+    dialog.addEventListener('close', function () {
+      var previous = trigger;
+      pendingForm = null;
+      trigger = null;
+      if (previous) previous.focus();
+    });
+  })();
+</script>

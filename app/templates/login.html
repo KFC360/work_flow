@@ -1,32 +1,104 @@
+{% from "macros/icons.html" import icon %}
 <!DOCTYPE html>
 <html lang="zh-CN" data-theme="corporate">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  {% include "partials/head_assets.html" %}
   <title>登录 · GitHub 工作流</title>
-  <link href="https://cdn.jsdelivr.net/npm/daisyui@4.12.14/dist/full.min.css" rel="stylesheet" type="text/css" />
-  <script src="https://cdn.tailwindcss.com"></script>
 </head>
-<body class="min-h-dvh bg-base-200 flex items-center justify-center p-4">
-  <div class="card w-full max-w-md bg-base-100 shadow">
-    <div class="card-body">
-      <h1 class="card-title text-2xl">GitHub 工作流</h1>
-      <p class="text-sm opacity-70">使用管理员账号登录</p>
-      {% if error %}
-      <div class="alert alert-error" role="alert">{{ error }}</div>
-      {% endif %}
-      <form method="post" action="/login" class="space-y-4" onsubmit="this.querySelector('button[type=submit]').disabled=true">
-        <div class="form-control">
-          <label class="label" for="username"><span class="label-text">用户名</span></label>
-          <input id="username" name="username" type="text" autocomplete="username" required class="input input-bordered w-full" />
+<body class="min-h-dvh bg-slate-50 text-slate-900 antialiased">
+  <main class="mx-auto flex min-h-dvh w-full max-w-6xl flex-col justify-center px-4 py-10 sm:px-6 lg:px-8">
+    <div class="grid items-center gap-10 lg:grid-cols-2">
+      <section class="order-1">
+        <div class="flex items-center gap-3">
+          <span class="flex h-11 w-11 items-center justify-center rounded-xl bg-sky-700 text-white">
+            {{ icon('webhook', 'h-6 w-6') }}
+          </span>
+          <div>
+            <p class="text-lg font-semibold tracking-tight">GitHub 工作流</p>
+            <p class="text-xs text-slate-500">内部运维台</p>
+          </div>
         </div>
-        <div class="form-control">
-          <label class="label" for="password"><span class="label-text">口令</span></label>
-          <input id="password" name="password" type="password" autocomplete="current-password" required class="input input-bordered w-full" />
+        <h1 class="mt-8 text-3xl font-semibold tracking-tight text-slate-900">从 Issue 到 Pull Request</h1>
+        <p class="mt-3 max-w-md text-sm leading-6 text-slate-600">按公司、仓库和 Issue 跟进设计文档、代码生成与 PR 的完整流水线。仅限授权账号使用。</p>
+        <ol class="mt-6 flex flex-wrap gap-2 text-xs text-slate-600" aria-label="处理流程">
+          {% for step in ['公司', '仓库', 'Issue', '设计文档', '代码', 'PR'] %}
+          <li class="rounded-full border border-slate-200 bg-white px-2.5 py-1">{{ step }}</li>
+          {% endfor %}
+        </ol>
+        <p class="mt-6 flex items-center gap-1.5 text-xs text-slate-500">{{ icon('lock', 'h-4 w-4') }}<span>仅限授权账号访问</span></p>
+      </section>
+
+      <section class="order-2 w-full lg:justify-self-end">
+        <div class="gw-card mx-auto w-full max-w-md p-6 sm:p-8">
+          <h2 class="text-xl font-semibold tracking-tight text-slate-900">登录</h2>
+          <p class="mt-1 text-sm text-slate-600">使用管理员账号进入控制台。</p>
+
+          {% if error %}
+          <div class="alert alert-error mt-4 flex items-start gap-2 text-sm" role="alert">
+            {{ icon('alert-triangle', 'h-5 w-5 shrink-0') }}
+            <span>{{ error }}</span>
+          </div>
+          {% endif %}
+
+          <form method="post" action="/login" class="mt-5 space-y-4">
+            <div>
+              <label class="mb-1 block text-sm font-medium text-slate-800" for="username">用户名</label>
+              <input
+                id="username"
+                name="username"
+                type="text"
+                autocomplete="username"
+                required
+                value="{{ username or '' }}"
+                class="input input-bordered w-full"
+                {% if error %}aria-invalid="true" aria-describedby="login-error" autofocus{% endif %}
+              />
+            </div>
+            <div>
+              <label class="mb-1 block text-sm font-medium text-slate-800" for="password">口令</label>
+              <div class="relative">
+                <input
+                  id="password"
+                  name="password"
+                  type="password"
+                  autocomplete="current-password"
+                  required
+                  class="input input-bordered w-full pr-11"
+                  {% if error %}aria-invalid="true" aria-describedby="login-error"{% endif %}
+                />
+                <button
+                  type="button"
+                  id="password-toggle"
+                  class="btn btn-ghost btn-sm absolute right-1 top-1/2 -translate-y-1/2"
+                  aria-label="显示口令"
+                  aria-pressed="false"
+                ><span id="password-toggle-label">显示</span></button>
+              </div>
+              {% if error %}<p id="login-error" class="mt-1 text-sm text-red-600">{{ error }}</p>{% endif %}
+            </div>
+            <button type="submit" class="btn btn-primary w-full gap-1.5" data-gw-submit>{{ icon('arrow-right') }}<span>登录</span></button>
+          </form>
         </div>
-        <button type="submit" class="btn btn-primary w-full">登录</button>
-      </form>
+      </section>
     </div>
-  </div>
+  </main>
+
+  {% include "partials/app_scripts.html" %}
+  <script>
+    (function () {
+      var input = document.getElementById('password');
+      var toggle = document.getElementById('password-toggle');
+      var label = document.getElementById('password-toggle-label');
+      if (!input || !toggle) return;
+      toggle.addEventListener('click', function () {
+        var show = input.type === 'password';
+        input.type = show ? 'text' : 'password';
+        toggle.setAttribute('aria-pressed', show ? 'true' : 'false');
+        toggle.setAttribute('aria-label', show ? '隐藏口令' : '显示口令');
+        if (label) label.textContent = show ? '隐藏' : '显示';
+        input.focus();
+      });
+    })();
+  </script>
 </body>
 </html>

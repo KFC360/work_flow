@@ -1,0 +1,14 @@
+{% from "macros/icons.html" import icon %}
+{% if flash == 'ok' %}
+<div id="flash-ok" class="alert alert-success mb-4 flex items-start gap-2 text-sm shadow-sm" role="status">
+  <span class="mt-0.5 shrink-0">{{ icon('check-circle', 'h-5 w-5') }}</span>
+  <span class="min-w-0 flex-1 whitespace-pre-line">{{ msg or '已保存' }}</span>
+  <button type="button" class="btn btn-ghost btn-xs" data-gw-dismiss aria-label="关闭提示">{{ icon('x') }}</button>
+</div>
+{% elif flash == 'error' %}
+<div id="flash-error" class="alert alert-error mb-4 flex items-start gap-2 text-sm shadow-sm" role="alert">
+  <span class="mt-0.5 shrink-0">{{ icon('alert-triangle', 'h-5 w-5') }}</span>
+  <span class="min-w-0 flex-1 whitespace-pre-line">{{ msg or '操作失败' }}</span>
+  <button type="button" class="btn btn-ghost btn-xs" data-gw-dismiss aria-label="关闭提示">{{ icon('x') }}</button>
+</div>
+{% endif %}

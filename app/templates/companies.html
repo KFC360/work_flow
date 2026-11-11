@@ -1,35 +1,59 @@
 {% extends "base.html" %}
+{% from "macros/ui.html" import page_header, badge, empty_state, pagination as pagination_bar %}
+{% from "macros/icons.html" import icon %}
 {% block title %}公司 · GitHub 工作流{% endblock %}
+
+{% block page_header %}
+{% call page_header('公司', '按 GitHub 所有者聚合的仓库与 Issue 概览。未结束 = 功能迭代尚未建 PR，或人工介入待处理，且 GitHub 仍为 open。', '总览') %}
+  <span class="text-sm text-slate-500">共 <span class="font-mono-data text-slate-900">{{ total }}</span> 个公司</span>
+{% endcall %}
+{% endblock %}
+
 {% block content %}
-<h1 class="text-2xl font-semibold">公司</h1>
 {% if not rows %}
-<div class="card bg-base-100 shadow">
-  <div class="card-body items-center text-center">
-    <h2 class="card-title">还没有公司</h2>
-    <p class="opacity-70">还没有收到 GitHub Issue 通知。配置 Webhook 后将自动出现。</p>
+  {{ empty_state('还没有公司', '收到 GitHub Issue 通知后，公司和仓库会自动出现。', 'building', '/deliveries', '查看 Webhook 投递') }}
+{% else %}
+<div class="gw-card overflow-hidden">
+  <div class="overflow-x-auto">
+    <table class="gw-table table min-w-[44rem]">
+      <thead>
+        <tr>
+          <th scope="col">公司名称</th>
+          <th scope="col" class="text-right">仓库数</th>
+          <th scope="col" class="text-right">未结束 Issue</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in rows %}
+        <tr>
+          <td>
+            <div class="flex items-center gap-3">
+              <span class="relative flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-slate-100 text-xs font-semibold text-slate-600">
+                <span aria-hidden="true">{{ (row.company.name or row.company.login or '?')[:1]|upper }}</span>
+                {% if row.company.avatar_url %}
+                <img src="{{ row.company.avatar_url }}" alt="" width="32" height="32" loading="lazy" referrerpolicy="no-referrer" class="absolute inset-0 h-8 w-8 rounded-full object-cover" onerror="this.remove()" />
+                {% endif %}
+              </span>
+              <span class="min-w-0">
+                <span class="flex flex-wrap items-center gap-2">
+                  <a class="link link-hover font-medium text-slate-900" href="/companies/{{ row.company.id }}">{{ row.company.name }}</a>
+                  {% if row.company.account_type == 'User' %}{{ badge('neutral', '个人账号', 'user') }}{% endif %}
+                  {% if row.company.sync_error %}<span title="{{ row.company.sync_error }}">{{ badge('danger', '同步失败', 'alert-triangle') }}</span>{% endif %}
+                </span>
+                {% if row.company.description %}
+                <span class="mt-0.5 block max-w-xl truncate text-xs text-slate-500" title="{{ row.company.description }}">{{ row.company.description }}</span>
+                {% endif %}
+              </span>
+            </div>
+          </td>
+          <td class="text-right font-mono-data tabular-nums">{{ row.repo_count }}</td>
+          <td class="text-right font-mono-data tabular-nums">{{ row.open_issues }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
   </div>
 </div>
-{% else %}
-<div class="overflow-x-auto bg-base-100 rounded-box shadow">
-  <table class="table">
-    <thead>
-      <tr><th>公司名称</th><th>仓库数</th><th>未结束 Issue</th></tr>
-    </thead>
-    <tbody>
-      {% for row in rows %}
-      <tr>
-        <td>
-          <a class="link link-primary cursor-pointer" href="/companies/{{ row.company.id }}">{{ row.company.name }}</a>
-          {% if row.company.account_type == 'User' %}
-          <span class="badge badge-ghost badge-sm ml-2">个人账号</span>
-          {% endif %}
-        </td>
-        <td class="font-mono-data">{{ row.repo_count }}</td>
-        <td class="font-mono-data">{{ row.open_issues }}</td>
-      </tr>
-      {% endfor %}
-    </tbody>
-  </table>
-</div>
 {% endif %}
+{{ pagination_bar(page, pagination.has_prev, pagination.has_next, pagination.prev_url, pagination.next_url) }}
 {% endblock %}

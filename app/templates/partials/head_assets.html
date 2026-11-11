@@ -1,0 +1,154 @@
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link
+  href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&family=Source+Sans+3:wght@400;500;600;700&display=swap"
+  rel="stylesheet"
+/>
+<link href="https://cdn.jsdelivr.net/npm/daisyui@4.12.14/dist/full.min.css" rel="stylesheet" type="text/css" />
+<script src="https://cdn.tailwindcss.com"></script>
+<script>
+  tailwind.config = {
+    theme: {
+      extend: {
+        fontFamily: {
+          sans: [
+            "Source Sans 3",
+            "system-ui",
+            "-apple-system",
+            "Segoe UI",
+            "PingFang SC",
+            "Microsoft YaHei",
+            "sans-serif",
+          ],
+          mono: [
+            "JetBrains Mono",
+            "ui-monospace",
+            "SFMono-Regular",
+            "Menlo",
+            "Consolas",
+            "monospace",
+          ],
+        },
+      },
+    },
+  };
+</script>
+<style>
+  :root {
+    --gw-bg: #f8fafc;
+    --gw-surface: #ffffff;
+    --gw-ink: #0f172a;
+    --gw-muted: #475569;
+    --gw-line: #e2e8f0;
+    --gw-accent: #0369a1;
+    --gw-accent-soft: #e0f2fe;
+    --gw-success: #059669;
+    --gw-warning: #d97706;
+    --gw-danger: #dc2626;
+    --gw-info: #0284c7;
+  }
+
+  html {
+    background-color: var(--gw-bg);
+  }
+
+  body {
+    background-color: var(--gw-bg);
+    color: var(--gw-ink);
+    font-family: "Source Sans 3", system-ui, -apple-system, "Segoe UI", "PingFang SC",
+      "Microsoft YaHei", sans-serif;
+  }
+
+  .font-mono-data,
+  code,
+  pre,
+  .font-mono {
+    font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  }
+
+  .gw-nav-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.5rem 0.75rem;
+    border-radius: 0.5rem;
+    border-bottom: 2px solid transparent;
+    font-size: 0.875rem;
+    font-weight: 500;
+    color: var(--gw-muted);
+    cursor: pointer;
+  }
+
+  .gw-nav-link:hover {
+    color: var(--gw-ink);
+    background-color: #f1f5f9;
+  }
+
+  .gw-nav-link[aria-current="page"] {
+    color: var(--gw-accent);
+    background-color: var(--gw-accent-soft);
+    border-bottom-color: var(--gw-accent);
+  }
+
+  .gw-card {
+    background-color: var(--gw-surface);
+    border: 1px solid var(--gw-line);
+    border-radius: 0.75rem;
+    box-shadow: 0 1px 2px rgba(15, 23, 42, 0.05);
+  }
+
+  .gw-table thead th {
+    font-size: 0.75rem;
+    font-weight: 600;
+    letter-spacing: 0.03em;
+    text-transform: uppercase;
+    color: #64748b;
+    background-color: #f8fafc;
+  }
+
+  .gw-table tbody tr {
+    border-top: 1px solid var(--gw-line);
+  }
+
+  .gw-table tbody tr:hover {
+    background-color: #f8fafc;
+  }
+
+  .gw-table td,
+  .gw-table th {
+    padding-top: 0.75rem;
+    padding-bottom: 0.75rem;
+  }
+
+  :where(a, button, input, select, textarea, summary, [tabindex]):focus-visible {
+    outline: 2px solid var(--gw-accent);
+    outline-offset: 2px;
+  }
+
+  a,
+  button {
+    cursor: pointer;
+  }
+
+  button:disabled,
+  .btn-disabled {
+    cursor: not-allowed;
+  }
+
+  [id] {
+    scroll-margin-top: 5.5rem;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+      scroll-behavior: auto !important;
+    }
+  }
+</style>

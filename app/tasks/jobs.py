@@ -319,13 +319,31 @@ def _ensure_worktree(
 
     worktree.parent.mkdir(parents=True, exist_ok=True)
     if worktree.exists():
-        issue.worktree_path = str(worktree)
-        if not issue.base_commit_sha:
-            issue.base_commit_sha = rev_parse(worktree, "HEAD")
-        if issue.codegen_phase in {"none", ""}:
-            issue.codegen_phase = "worktree_ready"
-        db.commit()
-        return
+        try:
+            current_branch = run_git(["rev-parse", "--abbrev-ref", "HEAD"], cwd=worktree)
+        except GitError:
+            current_branch = ""
+        if current_branch and current_branch != branch:
+            # Stale worktree on legacy issue/N while we now want dev_N (or vice versa).
+            logger.warning(
+                f"removing mismatched codegen worktree {worktree} "
+                f"(on {current_branch}, want {branch})"
+            )
+            try:
+                run_git(["worktree", "remove", "--force", str(worktree)], cwd=repo.local_path)
+            except GitError:
+                import shutil
+
+                shutil.rmtree(worktree, ignore_errors=True)
+                run_git(["worktree", "prune"], cwd=repo.local_path)
+        else:
+            issue.worktree_path = str(worktree)
+            if not issue.base_commit_sha:
+                issue.base_commit_sha = rev_parse(worktree, "HEAD")
+            if issue.codegen_phase in {"none", ""}:
+                issue.codegen_phase = "worktree_ready"
+            db.commit()
+            return
 
     # Always fork from default branch tip for a new feature branch; never check out master/main as the working branch name.
     start_ref = f"origin/{repo.default_branch}"

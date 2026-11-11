@@ -15,6 +15,19 @@ from app.services.worker_heartbeat import HEARTBEAT_STALE_SEC, read_heartbeat, w
 from app.core.settings import PROJECT_ROOT
 
 
+def test_agent_env_strips_database_url(monkeypatch) -> None:
+    from app.services import agent as agent_mod
+
+    monkeypatch.setenv("DATABASE_URL", "postgresql+psycopg://prod:secret@127.0.0.1:5432/github_workflow")
+    monkeypatch.setenv("JWT_SECRET_KEY", "super-secret")
+    monkeypatch.setenv("GITHUB_TOKEN", "ghp_xxx")
+    env = agent_mod._agent_env()
+    assert "DATABASE_URL" not in env
+    assert "JWT_SECRET_KEY" not in env
+    assert "GITHUB_TOKEN" not in env
+    assert env.get("GITHUB_WORKFLOW_AGENT") == "1"
+
+
 def test_progress_callback_without_stdout(tmp_path: Path, monkeypatch) -> None:
     calls: list[int] = []
 

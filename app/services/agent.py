@@ -41,11 +41,45 @@ def build_command(agent: str, prompt: str) -> list[str]:
     raise AgentError(f"unknown agent {agent}")
 
 
+# Never pass live DB / secrets into the agent subprocess. The target repo may be
+# this app itself; pytest conftest historically used DATABASE_URL + drop_all.
+_AGENT_ENV_BLOCKLIST_PREFIXES = (
+    "DATABASE_",
+    "POSTGRES_",
+    "PG",
+    "JWT_",
+    "GITHUB_",
+    "APP_ADMIN_",
+    "WEBHOOK_",
+    "AWS_",
+    "OPENAI_",
+    "ANTHROPIC_",
+    "DEEPSEEK_",
+)
+
+
 def _agent_env() -> dict[str, str]:
-    env = os.environ.copy()
+    env = {
+        k: v
+        for k, v in os.environ.items()
+        if not any(k == p or k.startswith(p) for p in _AGENT_ENV_BLOCKLIST_PREFIXES)
+    }
+    # Explicit removals for exact names that do not share a prefix above.
+    for key in (
+        "DATABASE_URL",
+        "JWT_SECRET_KEY",
+        "GITHUB_TOKEN",
+        "GITHUB_WEBHOOK_SECRET",
+        "APP_ADMIN_PASSWORD",
+        "OPENCODE_API_KEY",
+        "ANTHROPIC_API_KEY",
+    ):
+        env.pop(key, None)
     env.setdefault("TERM", "dumb")
     env.setdefault("NO_COLOR", "1")
     env.setdefault("CI", "1")
+    # Force any nested tooling away from the Worker DB URL.
+    env["GITHUB_WORKFLOW_AGENT"] = "1"
     return env
 
 

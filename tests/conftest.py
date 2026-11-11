@@ -9,13 +9,21 @@ from sqlalchemy import create_engine, text
 from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import NullPool
 
-# Ensure env before app imports settings cache
-os.environ.setdefault(
-    "DATABASE_URL",
-    "postgresql+psycopg://github_workflow:github_workflow@127.0.0.1:55438/github_workflow",
+# Tests must never reuse the Worker/production DATABASE_URL. Prefer an explicit
+# test URL; otherwise fall back to the local compose port only.
+_TEST_DB_DEFAULT = (
+    "postgresql+psycopg://github_workflow:github_workflow@127.0.0.1:55438/github_workflow"
 )
-os.environ["JWT_SECRET_KEY"] = "test-jwt-secret-key-for-pytest-32b!"
+_test_db = os.environ.get("TEST_DATABASE_URL") or _TEST_DB_DEFAULT
+os.environ["DATABASE_URL"] = _test_db
 
+if os.environ.get("GITHUB_WORKFLOW_AGENT") == "1":
+    raise RuntimeError(
+        "Refusing to run pytest inside the Worker agent environment "
+        "(GITHUB_WORKFLOW_AGENT=1). This protects the production database."
+    )
+
+os.environ["JWT_SECRET_KEY"] = "test-jwt-secret-key-for-pytest-32b!"
 os.environ["APP_ADMIN_USER"] = "admin"
 os.environ["APP_ADMIN_PASSWORD"] = "admin-pass"
 os.environ["GITHUB_WEBHOOK_SECRET"] = "test-webhook-secret"
@@ -31,7 +39,14 @@ get_settings.cache_clear()
 
 @pytest.fixture(scope="session")
 def engine():
-    eng = create_engine(os.environ["DATABASE_URL"], poolclass=NullPool, pool_pre_ping=True)
+    url = os.environ["DATABASE_URL"]
+    if "5432" in url and "55438" not in url and not os.environ.get("ALLOW_TEST_DROP_ALL"):
+        raise RuntimeError(
+            f"Refusing Base.metadata.drop_all on non-test DB URL ({url!r}). "
+            "Set TEST_DATABASE_URL to the compose DB (port 55438) "
+            "or set ALLOW_TEST_DROP_ALL=1 only for disposable databases."
+        )
+    eng = create_engine(url, poolclass=NullPool, pool_pre_ping=True)
     with eng.begin() as conn:
         conn.execute(text(f"CREATE SCHEMA IF NOT EXISTS {DB_SCHEMA}"))
     Base.metadata.drop_all(bind=eng)

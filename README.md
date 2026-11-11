@@ -65,8 +65,7 @@ uv run python -m app.tasks.worker
 sudo cp deploy/supervisor/github-workflow.conf /etc/supervisor/conf.d/
 sudo supervisorctl reread
 sudo supervisorctl update
-sudo supervisorctl start github-workflow-web github-workflow-worker
-# 或：sudo supervisorctl start github-workflow:*
+sudo supervisorctl start github-workflow:*
 sudo supervisorctl status
 ```
 

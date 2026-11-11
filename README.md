@@ -111,6 +111,8 @@ test -f /home/linuxuser/repos/work_flow/docs/architecture/design.md && echo ok
 uv run pytest
 ```
 
+CI：GitHub Actions `.github/workflows/ci.yml` 在 `pull_request` 与 `master` push 时跑 pytest（独立 Postgres service）。本系统只负责开到 PR；合并与部署仍人工或另配 CD。
+
 ## 目录
 
 本目录即实现根。入口：`main:app`、`python -m app.tasks.worker`。

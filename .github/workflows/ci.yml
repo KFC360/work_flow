@@ -1,0 +1,41 @@
+name: ci
+
+on:
+  pull_request:
+  push:
+    branches: [master]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: github_workflow
+          POSTGRES_PASSWORD: github_workflow
+          POSTGRES_DB: github_workflow
+        ports:
+          - "5432:5432"
+        options: >-
+          --health-cmd "pg_isready -U github_workflow -d github_workflow"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgresql+psycopg://github_workflow:github_workflow@127.0.0.1:5432/github_workflow
+      TEST_DATABASE_URL: postgresql+psycopg://github_workflow:github_workflow@127.0.0.1:5432/github_workflow
+      ALLOW_TEST_DROP_ALL: "1"
+      JWT_SECRET_KEY: ci-test-secret-not-for-prod
+      APP_ADMIN_USER: admin
+      APP_ADMIN_PASSWORD: ci-admin-pass
+      GITHUB_WEBHOOK_SECRET: ci-webhook
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+      - name: Install dependencies
+        run: uv sync --extra dev
+      - name: Pytest
+        run: uv run pytest -q

@@ -36,9 +36,33 @@ from app.services.git_repo import (
     run_git,
 )
 from app.services.github_api import GitHubClient
-from app.services.issues import codegen_branch_name, design_doc_relpath
+from app.services.issues import (
+    codegen_branch_name,
+    design_doc_relpath,
+    is_legacy_codegen_branch,
+)
 from app.services.prompts import codegen_prompt, write_doc_prompt
 from app.services.worker_heartbeat import write_heartbeat
+
+
+def _resolve_codegen_branch(issue: Issue, repo: Repository) -> str:
+    """Pick a feature branch that is not the default branch.
+
+    Prefer ``dev_{number}``. If a legacy ``issue/{number}`` is stored but this
+    Issue has no ownership SHAs (e.g. after a DB wipe), abandon it so a fresh
+    ``dev_`` branch can be created instead of failing on the orphan remote.
+    """
+    preferred = codegen_branch_name(issue.number)
+    owned = bool(issue.base_commit_sha or issue.doc_commit_sha or issue.code_commit_sha)
+    current = (issue.branch_name or "").strip()
+    if not current or current in {repo.default_branch, "master", "main"}:
+        return preferred
+    if owned:
+        return current
+    if is_legacy_codegen_branch(current, issue.number) or current != preferred:
+        # Unowned legacy / stale name: move to preferred dev_ branch.
+        return preferred
+    return current
 
 
 def _agent_progress(db: Session, job: Job, issue: Issue, log_path: Path):
@@ -508,7 +532,7 @@ def run_generate_code(db: Session, job: Job) -> None:
         return
     job.agent = agent
     issue.status = "generating"
-    issue.branch_name = issue.branch_name or codegen_branch_name(issue.number)
+    issue.branch_name = _resolve_codegen_branch(issue, repo)
     if issue.branch_name in {repo.default_branch, "master", "main"}:
         _fail_issue(
             db,

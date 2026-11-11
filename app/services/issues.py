@@ -43,3 +43,9 @@ def design_doc_relpath(doc_dir: str, iteration_no: int, issue_number: int) -> st
 def codegen_branch_name(issue_number: int) -> str:
     """Feature branch for generate_code / PR head. Never the default branch."""
     return f"dev_{int(issue_number)}"
+
+
+def is_legacy_codegen_branch(branch_name: str | None, issue_number: int) -> bool:
+    if not branch_name:
+        return False
+    return branch_name in {f"issue/{issue_number}", f"issue-{issue_number}"}

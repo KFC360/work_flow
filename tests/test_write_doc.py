@@ -20,6 +20,30 @@ def test_design_path_format() -> None:
     assert codegen_branch_name(2) == "dev_2"
 
 
+def test_resolve_codegen_branch_abandons_unowned_legacy() -> None:
+    from types import SimpleNamespace
+
+    from app.tasks.jobs import _resolve_codegen_branch
+
+    repo = SimpleNamespace(default_branch="main")
+    owned = SimpleNamespace(
+        number=2,
+        branch_name="issue/2",
+        base_commit_sha="abc",
+        doc_commit_sha=None,
+        code_commit_sha=None,
+    )
+    assert _resolve_codegen_branch(owned, repo) == "issue/2"
+    orphan = SimpleNamespace(
+        number=2,
+        branch_name="issue/2",
+        base_commit_sha=None,
+        doc_commit_sha=None,
+        code_commit_sha=None,
+    )
+    assert _resolve_codegen_branch(orphan, repo) == "dev_2"
+
+
 def test_porcelain_covers_untracked_parent_dir() -> None:
     rel = "docs/v0001-9/design.md"
     assert porcelain_untracked_covers("?? docs/v0001-9/\n", rel)

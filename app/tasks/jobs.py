@@ -36,7 +36,7 @@ from app.services.git_repo import (
     run_git,
 )
 from app.services.github_api import GitHubClient
-from app.services.issues import design_doc_relpath
+from app.services.issues import codegen_branch_name, design_doc_relpath
 from app.services.prompts import codegen_prompt, write_doc_prompt
 from app.services.worker_heartbeat import write_heartbeat
 
@@ -178,9 +178,13 @@ def run_create_pr(db: Session, job: Job) -> None:
     issue.status = "generating"
     db.commit()
     owner, name = repo.github_full_name.split("/", 1)
+    head_branch = issue.branch_name or codegen_branch_name(issue.number)
+    if head_branch in {repo.default_branch, "master", "main"}:
+        _fail_issue(db, issue, job, action="create_pr", error=f"拒绝在默认分支上开 PR: {head_branch}")
+        return
     client = GitHubClient()
     try:
-        existing = client.find_open_pull_request(owner, name, issue.branch_name or f"issue/{issue.number}")
+        existing = client.find_open_pull_request(owner, name, head_branch)
         if existing:
             issue.pr_number = existing.get("number")
             issue.pr_url = existing.get("html_url")
@@ -195,7 +199,7 @@ def run_create_pr(db: Session, job: Job) -> None:
             owner,
             name,
             title=issue.title,
-            head=issue.branch_name or f"issue/{issue.number}",
+            head=head_branch,
             base=repo.default_branch,
             body=f"Auto PR for #{issue.number}\n\n{issue.design_doc_path or ''}",
         )
@@ -279,6 +283,8 @@ def _ensure_worktree(
     worktree: Path,
     branch: str,
 ) -> None:
+    if branch in {repo.default_branch, "master", "main"}:
+        raise AgentError(f"拒绝在默认分支上创建 codegen worktree: {branch}")
     run_git(["fetch", "origin"], cwd=repo.local_path)
     owned = bool(issue.base_commit_sha or issue.doc_commit_sha or issue.code_commit_sha)
     remote_exists = branch_exists_remote(repo.local_path, branch)
@@ -297,6 +303,7 @@ def _ensure_worktree(
         db.commit()
         return
 
+    # Always fork from default branch tip for a new feature branch; never check out master/main as the working branch name.
     start_ref = f"origin/{repo.default_branch}"
     if owned and remote_exists:
         start_ref = f"origin/{branch}"
@@ -501,7 +508,16 @@ def run_generate_code(db: Session, job: Job) -> None:
         return
     job.agent = agent
     issue.status = "generating"
-    issue.branch_name = issue.branch_name or f"issue/{issue.number}"
+    issue.branch_name = issue.branch_name or codegen_branch_name(issue.number)
+    if issue.branch_name in {repo.default_branch, "master", "main"}:
+        _fail_issue(
+            db,
+            issue,
+            job,
+            action="generate_code",
+            error=f"拒绝在默认分支上生成代码: {issue.branch_name}",
+        )
+        return
     db.commit()
 
     branch = issue.branch_name

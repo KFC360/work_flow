@@ -38,3 +38,8 @@ def kind_locked(status: str) -> bool:
 
 def design_doc_relpath(doc_dir: str, iteration_no: int, issue_number: int) -> str:
     return f"{doc_dir.rstrip('/')}/v{iteration_no:04d}-{issue_number}/design.md"
+
+
+def codegen_branch_name(issue_number: int) -> str:
+    """Feature branch for generate_code / PR head. Never the default branch."""
+    return f"dev_{int(issue_number)}"

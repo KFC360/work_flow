@@ -152,7 +152,7 @@ GitHub 上的改名、转让用 id 对上原行：更新 `login`、`github_full_
 
 这样同时满足三件事：写文档时代理能读到现有代码；两个步骤之间工作区是干净的，别的 Issue 还能用同一份副本；默认分支上不会出现一份还没评审的设计。
 
-生成代码时创建或恢复分支 `issue/{编号}` 的专用 worktree，把数据库里的文档写回约定路径并单独提交，然后让代理写代码。`local_path` 只作为 git 仓库来源，不承载任务残留。
+生成代码时创建或恢复分支 `dev_{编号}` 的专用 worktree（从默认分支 tip 拉出，不以 master/main 为工作分支名），把数据库里的文档写回约定路径并单独提交，然后让代理写代码。`local_path` 只作为 git 仓库来源，不承载任务残留。
 
 ### D5：git 与 PR 属于系统
 
@@ -390,7 +390,7 @@ GitHub 字段由 API 覆盖。`local_path`、`doc_dir` 只由仓库页面写入�
 | design_doc_path | 相对路径，形如 `docs/v0003-13/design.md`。第一次写成功时定下，再次编写不改 |
 | design_doc_text | 文档全文。生成代码时把它写回仓库 |
 | design_source_updated_at | 本次文档使用的 `github_updated_at`，用于判断 Issue 后续是否变化 |
-| branch_name | `issue/{number}` |
+| branch_name | `dev_{number}`（生成代码专用开发分支，不以默认分支为工作分支） |
 | worktree_path | 生成代码使用的隔离 worktree；完成清理后可空 |
 | base_commit_sha | 创建 worktree 时的默认分支提交 |
 | doc_commit_sha | 设计文档提交 SHA |
@@ -736,7 +736,7 @@ failed 投递可以在页面点「重试投递」改回 queued。系统不依赖
 
 前置：功能迭代、待生成或「失败且 failed_action 为生成代码或创建 PR」、GitHub 为 open、`design_doc_text` 非空。生成代码还要求 `local_path` 已填、全站已选代理且 origin 一致。单独重试创建 PR 不读工作区，没有路径也可以。
 
-分支名 `issue/{number}`，同一仓库内唯一。稳定 worktree 在 `WORKTREE_ROOT/codegen/{repository_id}/{issue_id}`。任务按 `codegen_phase` 与三个 SHA 续跑，重试不把已经做过的阶段再做一遍。
+分支名 `dev_{number}`，同一仓库内唯一。稳定 worktree 在 `WORKTREE_ROOT/codegen/{repository_id}/{issue_id}`。任务按 `codegen_phase` 与三个 SHA 续跑，重试不把已经做过的阶段再做一遍。
 
 | 当前 phase | 行为 |
 | --- | --- |
@@ -767,7 +767,7 @@ PR 失败：停在 `pushed`，状态保持已生成，`failed_action = create_pr
 
 提交使用环境变量里的 bot 名称和邮箱，不使用代理自己的 git 身份。提交前设置这一次命令的 `GIT_AUTHOR_*` 和 `GIT_COMMITTER_*`，不修改仓库的 git config。
 
-PR 标题：`[#{number}] {title}`。正文包含设计文档路径、`Closes #{number}`，以及文档开头最多 20 行。base 是默认分支，head 是 `issue/{number}`。
+PR 标题：`[#{number}] {title}`。正文包含设计文档路径、`Closes #{number}`，以及文档开头最多 20 行。base 是默认分支，head 是 `dev_{number}`。
 
 生成代码的提示词要求代理：
 

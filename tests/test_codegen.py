@@ -66,7 +66,7 @@ def _seed_feature_ready(db: Session, clone: Path, *, number: int = 7):
     issue.design_doc_text = "# design\n\nok\n"
     issue.iteration_no = 1
     issue.codegen_phase = "none"
-    issue.branch_name = f"issue/{number}"
+    issue.branch_name = f"dev_{number}"
     db.commit()
     db.refresh(issue)
     return repo, issue
@@ -82,6 +82,8 @@ def _settings_stub(tmp_path: Path, monkeypatch):
         doc_timeout_sec = 60
         git_author_name = "t"
         git_author_email = "t@t"
+        agent_test_db_enabled = False
+        database_url = "postgresql+psycopg://u:p@127.0.0.1:55438/github_workflow"
 
     monkeypatch.setattr("app.tasks.jobs.get_settings", lambda: S())
     monkeypatch.setattr("app.tasks.jobs.read_agent", lambda: "claude")
@@ -126,7 +128,7 @@ def test_happy_path_phases_and_shas(db: Session, tmp_path: Path, monkeypatch) ->
     assert commit_has_issue_trailer(worktree, issue.doc_commit_sha, issue.id)
     assert commit_has_issue_trailer(worktree, issue.code_commit_sha, issue.id)
     # branch pushed to origin
-    assert git(clone, "ls-remote", "--heads", "origin", f"issue/{issue.number}")
+    assert git(clone, "ls-remote", "--heads", "origin", f"dev_{issue.number}")
 
 
 def test_agent_interrupt_retry_resets_to_doc_sha(db: Session, tmp_path: Path, monkeypatch) -> None:
@@ -293,11 +295,11 @@ def test_conflict_branch_rejected(db: Session, tmp_path: Path, monkeypatch) -> N
     repo, issue = _seed_feature_ready(db, clone, number=15)
 
     # create foreign branch on origin without our SHA ownership
-    git(clone, "checkout", "-b", f"issue/{issue.number}")
+    git(clone, "checkout", "-b", f"dev_{issue.number}")
     (clone / "foreign.txt").write_text("nope\n", encoding="utf-8")
     git(clone, "add", "foreign.txt")
     git(clone, "commit", "-m", "foreign")
-    git(clone, "push", "-u", "origin", f"issue/{issue.number}")
+    git(clone, "push", "-u", "origin", f"dev_{issue.number}")
     git(clone, "checkout", "main")
 
     job = job_crud.enqueue(db, issue_id=issue.id, repository_id=repo.id, action="generate_code")
@@ -330,7 +332,7 @@ def test_sensitive_path_rejected(db: Session, tmp_path: Path, monkeypatch) -> No
     assert issue.status == "failed"
     assert issue.codegen_phase == "agent_running"
     # not pushed
-    remote = git(clone, "ls-remote", "--heads", "origin", f"issue/{issue.number}")
+    remote = git(clone, "ls-remote", "--heads", "origin", f"dev_{issue.number}")
     assert remote == ""
 
 
@@ -339,7 +341,7 @@ def test_existing_pr_adopted(db: Session, tmp_path: Path, monkeypatch) -> None:
     repo, issue = _seed_feature_ready(db, clone, number=17)
     issue.status = "generated"
     issue.codegen_phase = "pushed"
-    issue.branch_name = f"issue/{issue.number}"
+    issue.branch_name = f"dev_{issue.number}"
     db.commit()
 
     class FakeClient:

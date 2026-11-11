@@ -14,7 +14,10 @@ from app.tasks.jobs import run_write_doc
 
 
 def test_design_path_format() -> None:
+    from app.services.issues import codegen_branch_name
+
     assert design_doc_relpath("docs", 3, 13) == "docs/v0003-13/design.md"
+    assert codegen_branch_name(2) == "dev_2"
 
 
 def test_porcelain_covers_untracked_parent_dir() -> None:

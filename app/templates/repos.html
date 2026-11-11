@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+{% block title %}{{ company.name }} · 仓库{% endblock %}
+{% block content %}
+<div class="flex justify-between items-center">
+  <h1 class="text-2xl font-semibold">仓库</h1>
+</div>
+{% if not rows %}
+<div class="card bg-base-100 shadow"><div class="card-body"><p>该公司下还没有仓库。</p></div></div>
+{% else %}
+<div class="overflow-x-auto bg-base-100 rounded-box shadow">
+  <table class="table">
+    <thead>
+      <tr><th>仓库</th><th>默认分支</th><th>服务器路径</th><th>开放 Issue</th><th>操作</th></tr>
+    </thead>
+    <tbody>
+      {% for row in rows %}
+      <tr>
+        <td>
+          <a class="link" href="/repos/{{ row.repo.id }}">{{ row.repo.github_full_name }}</a>
+          {% if row.repo.html_url %}<a class="link link-hover text-xs ml-2" href="{{ row.repo.html_url }}" target="_blank" rel="noopener">GitHub</a>{% endif %}
+        </td>
+        <td class="font-mono-data">{{ row.repo.default_branch }}</td>
+        <td class="font-mono-data text-sm">{{ row.repo.local_path or '未填写' }}</td>
+        <td>{{ row.open_issues }}</td>
+        <td class="flex gap-2">
+          <a class="btn btn-xs" href="/repos/{{ row.repo.id }}/issues">Issue</a>
+          <form method="post" action="/repos/{{ row.repo.id }}/resync">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+            <button class="btn btn-xs btn-outline" type="submit">重新同步</button>
+          </form>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+{% endblock %}

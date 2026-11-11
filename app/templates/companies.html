@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+{% block title %}公司 · GitHub 工作流{% endblock %}
+{% block content %}
+<h1 class="text-2xl font-semibold">公司</h1>
+{% if not rows %}
+<div class="card bg-base-100 shadow">
+  <div class="card-body items-center text-center">
+    <h2 class="card-title">还没有公司</h2>
+    <p class="opacity-70">还没有收到 GitHub Issue 通知。配置 Webhook 后将自动出现。</p>
+  </div>
+</div>
+{% else %}
+<div class="overflow-x-auto bg-base-100 rounded-box shadow">
+  <table class="table">
+    <thead>
+      <tr><th>公司名称</th><th>仓库数</th><th>未结束 Issue</th></tr>
+    </thead>
+    <tbody>
+      {% for row in rows %}
+      <tr>
+        <td>
+          <a class="link link-primary cursor-pointer" href="/companies/{{ row.company.id }}">{{ row.company.name }}</a>
+          {% if row.company.account_type == 'User' %}
+          <span class="badge badge-ghost badge-sm ml-2">个人账号</span>
+          {% endif %}
+        </td>
+        <td class="font-mono-data">{{ row.repo_count }}</td>
+        <td class="font-mono-data">{{ row.open_issues }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+{% endblock %}

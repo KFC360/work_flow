@@ -1,0 +1,19 @@
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: github_workflow
+      POSTGRES_PASSWORD: github_workflow
+      POSTGRES_DB: github_workflow
+    ports:
+      - "55438:5432"
+    volumes:
+      - github_workflow_pg:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U github_workflow -d github_workflow"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  github_workflow_pg:

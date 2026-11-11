@@ -1,0 +1,104 @@
+{% extends "base.html" %}
+{% block title %}#{{ issue.number }} {{ issue.title }}{% endblock %}
+{% block content %}
+<div class="flex flex-wrap justify-between gap-2">
+  <h1 class="text-2xl font-semibold">#{{ issue.number }} {{ issue.title }}</h1>
+  <a class="link" href="{{ issue.html_url }}" target="_blank" rel="noopener">GitHub</a>
+</div>
+
+{% if stale_doc %}
+<div class="alert alert-warning">Issue 在文档完成后有更新，如需同步请重新编写文档。</div>
+{% endif %}
+{% if label_mismatch %}
+<div class="alert alert-warning">GitHub 标签与本地类型不一致。</div>
+{% endif %}
+{% if issue.last_error %}
+<div class="alert alert-error">{{ issue.last_error }}</div>
+{% endif %}
+
+<div class="flex flex-wrap gap-2" id="issue-actions">
+  {% for act in actions %}
+    {% if act.kind == 'link' %}
+      <a class="btn btn-sm" href="{{ act.href }}" {% if act.href and act.href.startswith('http') %}target="_blank" rel="noopener"{% endif %}>{{ act.label }}</a>
+    {% elif act.kind == 'text' %}
+      <button class="btn btn-sm btn-disabled" disabled>{{ act.label }}</button>
+    {% else %}
+      <form method="post" action="{{ act.form_action }}" {% if act.confirm %}onsubmit="return confirm('{{ act.confirm }}')"{% endif %}>
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+        <button class="btn btn-sm btn-primary" type="submit">{{ act.label }}</button>
+      </form>
+    {% endif %}
+  {% endfor %}
+</div>
+
+<div class="grid lg:grid-cols-2 gap-4">
+  <div class="card bg-base-100 shadow">
+    <div class="card-body">
+      <h2 class="card-title text-base">元数据</h2>
+      <div id="issue-status" aria-live="polite" class="space-y-1 text-sm">
+        <p>类型：{{ kind_label }}</p>
+        <p>流程状态：<span class="badge">{{ status_label }}</span></p>
+        <p>GitHub：{{ issue.github_state }}</p>
+        <p>标签：{{ issue.label_names | join(', ') }}</p>
+        <p>分支：<span class="font-mono-data">{{ issue.branch_name or '—' }}</span></p>
+        {% if issue.pr_url %}<p>PR：<a class="link" href="{{ issue.pr_url }}" target="_blank" rel="noopener">{{ issue.pr_url }}</a></p>{% endif %}
+        {% if latest_job %}
+        <p>最近任务：{{ latest_job.action }} / {{ latest_job.status }}</p>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+  <div class="card bg-base-100 shadow">
+    <div class="card-body">
+      <h2 class="card-title text-base">Issue 正文</h2>
+      <pre class="whitespace-pre-wrap text-sm">{{ issue.body }}</pre>
+    </div>
+  </div>
+</div>
+
+{% if issue.design_doc_path %}
+<div class="card bg-base-100 shadow">
+  <div class="card-body">
+    <h2 class="card-title text-base">设计文档 <span class="font-mono-data text-sm font-normal">{{ issue.design_doc_path }}</span></h2>
+    <pre class="whitespace-pre-wrap font-mono-data text-sm bg-base-200 p-3 rounded">{{ issue.design_doc_text or '' }}</pre>
+  </div>
+</div>
+{% endif %}
+
+{% if latest_job and latest_job.log_excerpt %}
+<div class="card bg-base-100 shadow">
+  <div class="card-body">
+    <h2 class="card-title text-base">日志摘录</h2>
+    <pre id="issue-log" class="whitespace-pre-wrap font-mono-data text-xs bg-base-200 p-3 rounded max-h-96 overflow-auto">{{ latest_job.log_excerpt }}</pre>
+  </div>
+</div>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+{% if polling %}
+<script>
+(function () {
+  var timer = setInterval(function () {
+    fetch('/issues/{{ issue.id }}/status-fragment', { credentials: 'same-origin' })
+      .then(function (r) {
+        if (r.status === 401) {
+          clearInterval(timer);
+          alert('会话已失效，请重新登录');
+          window.location = '/login';
+          return null;
+        }
+        return r.text();
+      })
+      .then(function (html) {
+        if (!html) return;
+        var box = document.getElementById('issue-status');
+        if (box) box.innerHTML = html;
+        if (html.indexOf('data-done="1"') !== -1) clearInterval(timer);
+      })
+      .catch(function () {});
+  }, 5000);
+})();
+</script>
+{% endif %}
+{% endblock %}

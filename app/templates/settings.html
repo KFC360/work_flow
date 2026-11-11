@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+{% block title %}设置 · GitHub 工作流{% endblock %}
+{% block content %}
+<h1 class="text-2xl font-semibold">设置</h1>
+{% if not agent %}
+<div class="alert alert-warning">尚未选择代理。编写文档与生成代码前必须配置。</div>
+{% endif %}
+<div class="card bg-base-100 shadow max-w-lg">
+  <div class="card-body">
+    <p class="text-sm opacity-70">当前选择会用于之后所有仓库的编写文档和生成代码。</p>
+    <form method="post" action="/settings" class="space-y-4" onsubmit="this.querySelector('button[type=submit]').disabled=true">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+      <div class="form-control">
+        <label class="label cursor-pointer justify-start gap-3">
+          <input type="radio" name="agent" value="opencode" class="radio" {% if agent == 'opencode' %}checked{% endif %} required />
+          <span class="label-text">opencode</span>
+        </label>
+        <label class="label cursor-pointer justify-start gap-3">
+          <input type="radio" name="agent" value="claude" class="radio" {% if agent == 'claude' %}checked{% endif %} />
+          <span class="label-text">claude</span>
+        </label>
+      </div>
+      <button type="submit" class="btn btn-primary">保存</button>
+    </form>
+  </div>
+</div>
+{% endblock %}

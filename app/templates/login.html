@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="corporate">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>登录 · GitHub 工作流</title>
+  <link href="https://cdn.jsdelivr.net/npm/daisyui@4.12.14/dist/full.min.css" rel="stylesheet" type="text/css" />
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="min-h-dvh bg-base-200 flex items-center justify-center p-4">
+  <div class="card w-full max-w-md bg-base-100 shadow">
+    <div class="card-body">
+      <h1 class="card-title text-2xl">GitHub 工作流</h1>
+      <p class="text-sm opacity-70">使用管理员账号登录</p>
+      {% if error %}
+      <div class="alert alert-error" role="alert">{{ error }}</div>
+      {% endif %}
+      <form method="post" action="/login" class="space-y-4" onsubmit="this.querySelector('button[type=submit]').disabled=true">
+        <div class="form-control">
+          <label class="label" for="username"><span class="label-text">用户名</span></label>
+          <input id="username" name="username" type="text" autocomplete="username" required class="input input-bordered w-full" />
+        </div>
+        <div class="form-control">
+          <label class="label" for="password"><span class="label-text">口令</span></label>
+          <input id="password" name="password" type="password" autocomplete="current-password" required class="input input-bordered w-full" />
+        </div>
+        <button type="submit" class="btn btn-primary w-full">登录</button>
+      </form>
+    </div>
+  </div>
+</body>
+</html>

@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="corporate">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>{% block title %}GitHub 工作流{% endblock %}</title>
+  <link href="https://cdn.jsdelivr.net/npm/daisyui@4.12.14/dist/full.min.css" rel="stylesheet" type="text/css" />
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    .font-mono-data { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; }
+    @media (prefers-reduced-motion: reduce) {
+      * { animation: none !important; transition: none !important; }
+    }
+  </style>
+</head>
+<body class="min-h-dvh bg-base-200">
+  <div class="navbar bg-base-100 border-b border-base-300 px-4">
+    <div class="flex-1 gap-4">
+      <a href="/" class="font-semibold text-lg cursor-pointer">GitHub 工作流</a>
+      <nav class="hidden sm:flex gap-2">
+        <a href="/" class="btn btn-ghost btn-sm {% if nav == 'companies' %}btn-active{% endif %}">公司</a>
+        <a href="/deliveries" class="btn btn-ghost btn-sm {% if nav == 'deliveries' %}btn-active{% endif %}">Webhook 投递</a>
+        <a href="/settings" class="btn btn-ghost btn-sm {% if nav == 'settings' %}btn-active{% endif %}">设置</a>
+      </nav>
+    </div>
+    <div class="flex-none gap-2">
+      <span class="text-sm opacity-70">{{ user.username }}</span>
+      <form method="post" action="/logout">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+        <button type="submit" class="btn btn-ghost btn-sm">退出</button>
+      </form>
+    </div>
+  </div>
+
+  <main class="max-w-7xl mx-auto px-4 py-6 space-y-4">
+    {% if breadcrumbs %}
+    <div class="breadcrumbs text-sm">
+      <ul>
+        {% for label, href in breadcrumbs %}
+        <li>{% if href %}<a href="{{ href }}">{{ label }}</a>{% else %}{{ label }}{% endif %}</li>
+        {% endfor %}
+      </ul>
+    </div>
+    {% endif %}
+
+    {% if flash == 'ok' %}
+    <div class="alert alert-success" role="status" id="flash-ok">{{ msg or '已保存' }}</div>
+    {% elif flash == 'error' %}
+    <div class="alert alert-error" role="alert">{{ msg or '操作失败' }}</div>
+    {% endif %}
+
+    {% block content %}{% endblock %}
+  </main>
+  <script>
+    (function () {
+      var el = document.getElementById('flash-ok');
+      if (el) setTimeout(function () { el.style.display = 'none'; }, 4000);
+    })();
+  </script>
+  {% block scripts %}{% endblock %}
+</body>
+</html>

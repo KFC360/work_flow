@@ -1,0 +1,11 @@
+{% extends "base.html" %}
+{% block title %}未找到 · GitHub 工作流{% endblock %}
+{% block content %}
+<div class="card bg-base-100 shadow">
+  <div class="card-body">
+    <h1 class="card-title">未找到</h1>
+    <p>{{ message or '请求的资源不存在。' }}</p>
+    <a class="btn btn-primary w-fit" href="/">回公司列表</a>
+  </div>
+</div>
+{% endblock %}

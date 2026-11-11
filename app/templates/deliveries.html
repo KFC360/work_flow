@@ -1,0 +1,64 @@
+{% extends "base.html" %}
+{% block title %}Webhook 投递 · GitHub 工作流{% endblock %}
+{% block content %}
+<div class="flex flex-wrap items-end justify-between gap-4">
+  <h1 class="text-2xl font-semibold">Webhook 投递</h1>
+  <form method="get" class="flex gap-2 items-end">
+    <div class="form-control">
+      <label class="label" for="status"><span class="label-text">状态</span></label>
+      <select id="status" name="status" class="select select-bordered select-sm">
+        {% for s in ['all','queued','retry','failed','succeeded','ignored','running'] %}
+        <option value="{{ s }}" {% if status == s %}selected{% endif %}>{{ s }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <button class="btn btn-sm btn-primary" type="submit">筛选</button>
+  </form>
+</div>
+
+{% if not rows %}
+<div class="card bg-base-100 shadow">
+  <div class="card-body items-center text-center">
+    <h2 class="card-title">还没有投递</h2>
+    <p class="opacity-70">Webhook 配置好并收到事件后会出现在这里。</p>
+  </div>
+</div>
+{% else %}
+<div class="overflow-x-auto bg-base-100 rounded-box shadow">
+  <table class="table table-sm">
+    <thead>
+      <tr>
+        <th>Delivery</th><th>动作</th><th>仓库 id</th><th>状态</th><th>尝试</th><th>下次重试</th><th>收到时间</th><th>错误</th><th>操作</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for row in rows %}
+      <tr>
+        <td class="font-mono-data" title="{{ row.delivery_id }}">{{ row.delivery_id[:12] }}…</td>
+        <td>{{ row.action or '—' }}</td>
+        <td class="font-mono-data">{{ row.repository_id or '—' }}</td>
+        <td><span class="badge badge-outline">{{ row.status }}</span></td>
+        <td>{{ row.attempts }}</td>
+        <td class="font-mono-data text-xs">{{ row.next_retry_at or '—' }}</td>
+        <td class="font-mono-data text-xs">{{ row.created_at }}</td>
+        <td class="max-w-xs truncate" title="{{ row.last_error or '' }}">{{ row.last_error or '—' }}</td>
+        <td>
+          {% if row.status == 'failed' %}
+          <form method="post" action="/deliveries/{{ row.delivery_id }}/retry">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+            <button class="btn btn-xs btn-outline" type="submit">重试投递</button>
+          </form>
+          {% else %}—{% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+<div class="flex gap-2">
+  {% if has_prev %}<a class="btn btn-sm" href="?status={{ status }}&page={{ page - 1 }}">上一页</a>{% endif %}
+  <span class="text-sm opacity-70 self-center">第 {{ page }} 页</span>
+  {% if has_next %}<a class="btn btn-sm" href="?status={{ status }}&page={{ page + 1 }}">下一页</a>{% endif %}
+</div>
+{% endif %}
+{% endblock %}

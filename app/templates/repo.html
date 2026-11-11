@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+{% block title %}{{ repo.github_full_name }} · 仓库{% endblock %}
+{% block content %}
+<h1 class="text-2xl font-semibold font-mono-data">{{ repo.github_full_name }}</h1>
+{% if origin_mismatch %}
+<div class="alert alert-warning">origin 与 GitHub 仓库名不一致，请先更新服务器 remote 或改填路径。</div>
+{% endif %}
+{% if repo.sync_error %}
+<div class="alert alert-error">同步错误：{{ repo.sync_error }}</div>
+{% endif %}
+{% if form_disabled %}
+<div class="alert alert-info">有进行中的任务，暂不可改路径。</div>
+{% endif %}
+
+<div class="grid md:grid-cols-2 gap-4">
+  <div class="card bg-base-100 shadow">
+    <div class="card-body">
+      <h2 class="card-title text-base">GitHub 资料</h2>
+      <p>{{ repo.description or '无描述' }}</p>
+      <p>默认分支：<span class="font-mono-data">{{ repo.default_branch }}</span></p>
+      <p>私有：{{ '是' if repo.private else '否' }}</p>
+      <p>最近同步：{{ repo.synced_at or '—' }}</p>
+      {% if repo.html_url %}<a class="link" href="{{ repo.html_url }}" target="_blank" rel="noopener">打开 GitHub</a>{% endif %}
+      <a class="btn btn-sm mt-2 w-fit" href="/repos/{{ repo.id }}/issues">查看 Issue</a>
+    </div>
+  </div>
+  <div class="card bg-base-100 shadow">
+    <div class="card-body">
+      <h2 class="card-title text-base">本地配置</h2>
+      {% if field_errors %}
+      <div class="alert alert-error">请修正下列字段后重试。</div>
+      {% endif %}
+      <form method="post" action="/repos/{{ repo.id }}" class="space-y-3" onsubmit="this.querySelector('button[type=submit]').disabled=true">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+        <div class="form-control">
+          <label class="label" for="local_path"><span class="label-text">服务器项目路径</span></label>
+          <input id="local_path" name="local_path" class="input input-bordered {% if field_errors.local_path %}input-error{% endif %}" value="{{ local_path }}" {% if form_disabled %}disabled{% endif %} />
+          {% if field_errors.local_path %}<p class="text-error text-sm">{{ field_errors.local_path }}</p>{% endif %}
+          <p class="text-xs opacity-70 mt-1">须为已 clone 的 git 顶层绝对路径</p>
+        </div>
+        <div class="form-control">
+          <label class="label" for="doc_dir"><span class="label-text">文档目录</span></label>
+          <input id="doc_dir" name="doc_dir" class="input input-bordered {% if field_errors.doc_dir %}input-error{% endif %}" value="{{ doc_dir }}" {% if form_disabled %}disabled{% endif %} />
+          {% if field_errors.doc_dir %}<p class="text-error text-sm">{{ field_errors.doc_dir }}</p>{% endif %}
+        </div>
+        <button type="submit" class="btn btn-primary" {% if form_disabled %}disabled{% endif %}>保存</button>
+      </form>
+    </div>
+  </div>
+</div>
+{% endblock %}

@@ -1,0 +1,2 @@
+# 全站代理：opencode 或 claude。复制为 config.yaml 后修改。
+agent: claude

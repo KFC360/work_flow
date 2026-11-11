@@ -242,6 +242,33 @@ def test_issue_list_url_preserves_filters() -> None:
         _issue_list_url(7, kind=None, status=None, github_state="", page=1)
         == "/repos/7/issues"
     )
+    assert (
+        _issue_list_url(
+            7, kind="feature", status="unfinished", github_state="open", page=2
+        )
+        == "/repos/7/issues?kind=feature&status=unfinished&github_state=open&page=2"
+    )
+
+
+def test_repo_card_sections_and_summary_links(client: TestClient, db: Session) -> None:
+    _login(client, db)
+    company, repo = _seed_company_repo(db)
+    _seed_issue(db, repo, number=1, status="recorded", kind="feature", title="待处理功能")
+
+    resp = client.get(f"/repos/{repo.id}")
+    assert resp.status_code == 200
+    text = resp.text
+    assert "GitHub 资料" in text
+    assert "所属公司" in text
+    assert f"/companies/{company.id}" in text
+    assert "GitHub 仓库 ID" in text
+    assert "本系统" in text
+    assert "未结束功能迭代" in text
+    assert "人工介入待处理" in text
+    assert "三类可重叠" in text
+    assert f'href="/repos/{repo.id}/issues?kind=feature&amp;status=unfinished&amp;github_state=open"' in text
+    assert f'href="/repos/{repo.id}/issues?kind=support&amp;status=support_open&amp;github_state=open"' in text
+    assert f'href="/repos/{repo.id}/issues?status=failed&amp;github_state=open"' in text
 
 
 def test_login_page_markup(client: TestClient, db: Session) -> None:

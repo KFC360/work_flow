@@ -29,33 +29,45 @@ def upsert_from_github(
     html_url: str | None,
     default_branch: str,
     private: bool,
+    language: str | None = None,
+    stargazers_count: int | None = None,
+    forks_count: int | None = None,
+    open_issues_count: int | None = None,
+    topics: list[str] | None = None,
+    license_spdx: str | None = None,
+    license_name: str | None = None,
+    archived: bool = False,
+    disabled: bool = False,
+    pushed_at: datetime | None = None,
+    homepage: str | None = None,
+    visibility: str | None = None,
 ) -> Repository:
     row = get_by_github_repo_id(db, github_repo_id)
     now = datetime.now(timezone.utc)
     if row is None:
-        row = Repository(
-            company_id=company_id,
-            github_repo_id=github_repo_id,
-            name=name,
-            github_full_name=github_full_name,
-            description=description,
-            html_url=html_url,
-            default_branch=default_branch or "main",
-            private=private,
-            synced_at=now,
-            sync_error=None,
-        )
+        row = Repository(company_id=company_id, github_repo_id=github_repo_id)
         db.add(row)
-    else:
-        row.company_id = company_id
-        row.name = name
-        row.github_full_name = github_full_name
-        row.description = description
-        row.html_url = html_url
-        row.default_branch = default_branch or "main"
-        row.private = private
-        row.synced_at = now
-        row.sync_error = None
+    row.company_id = company_id
+    row.name = name
+    row.github_full_name = github_full_name
+    row.description = description
+    row.html_url = html_url
+    row.default_branch = default_branch or "main"
+    row.private = private
+    row.synced_at = now
+    row.sync_error = None
+    row.language = language
+    row.stargazers_count = stargazers_count
+    row.forks_count = forks_count
+    row.open_issues_count = open_issues_count
+    row.topics = topics
+    row.license_spdx = license_spdx
+    row.license_name = license_name
+    row.archived = archived
+    row.disabled = disabled
+    row.pushed_at = pushed_at
+    row.homepage = homepage
+    row.visibility = visibility
     db.commit()
     db.refresh(row)
     return row

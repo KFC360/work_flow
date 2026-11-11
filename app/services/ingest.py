@@ -12,6 +12,44 @@ from app.crud import repository as repository_crud
 from app.services.github_api import GitHubAPIError, GitHubClient
 
 
+def _text(value: Any) -> str | None:
+    if not isinstance(value, str):
+        return None
+    value = value.strip()
+    return value or None
+
+
+def _int_or_none(value: Any) -> int | None:
+    if isinstance(value, bool) or not isinstance(value, int):
+        return None
+    return value
+
+
+def _topic_list(value: Any) -> list[str]:
+    if not isinstance(value, list):
+        return []
+    topics: list[str] = []
+    seen: set[str] = set()
+    for item in value:
+        if not isinstance(item, str):
+            continue
+        topic = item.strip()
+        if not topic or topic in seen:
+            continue
+        seen.add(topic)
+        topics.append(topic)
+    return topics
+
+
+def _license_fields(value: Any) -> tuple[str | None, str | None]:
+    if not isinstance(value, dict):
+        return None, None
+    spdx = _text(value.get("spdx_id"))
+    if spdx == "NOASSERTION":
+        spdx = None
+    return spdx, _text(value.get("name"))
+
+
 def _parse_dt(value: str | None) -> datetime | None:
     if not value:
         return None
@@ -57,6 +95,8 @@ def sync_owner_and_repo(db: Session, client: GitHubClient, github_repo_id: int):
             html_url=user.get("html_url"),
         )
 
+    license_spdx, license_name = _license_fields(repo_data.get("license"))
+
     repo = repository_crud.upsert_from_github(
         db,
         company_id=company.id,
@@ -67,6 +107,18 @@ def sync_owner_and_repo(db: Session, client: GitHubClient, github_repo_id: int):
         html_url=repo_data.get("html_url"),
         default_branch=repo_data.get("default_branch") or "main",
         private=bool(repo_data.get("private")),
+        language=_text(repo_data.get("language")),
+        stargazers_count=_int_or_none(repo_data.get("stargazers_count")),
+        forks_count=_int_or_none(repo_data.get("forks_count")),
+        open_issues_count=_int_or_none(repo_data.get("open_issues_count")),
+        topics=_topic_list(repo_data.get("topics")),
+        license_spdx=license_spdx,
+        license_name=license_name,
+        archived=bool(repo_data.get("archived")),
+        disabled=bool(repo_data.get("disabled")),
+        pushed_at=_parse_dt(repo_data.get("pushed_at")),
+        homepage=_text(repo_data.get("homepage")),
+        visibility=_text(repo_data.get("visibility")),
     )
     return company, repo
 

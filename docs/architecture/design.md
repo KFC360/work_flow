@@ -697,7 +697,7 @@ failed 投递可以在页面点「重试投递」改回 queued。系统不依赖
 {"access_token": "<jwt>", "token_type": "bearer"}
 ```
 
-用户名或口令不对返回 401，`WWW-Authenticate: Bearer`。`disabled` 的用户返回 400，详情 `Inactive user`。令牌算法 `HS256`，过期时间默认 30 分钟，由 `ACCESS_TOKEN_EXPIRE_MINUTES` 配置。密钥是 `JWT_SECRET_KEY`，用 `openssl rand -hex 32` 生成。
+用户名或口令不对返回 401，`WWW-Authenticate: Bearer`。`disabled` 的用户返回 400，详情 `Inactive user`。令牌算法 `HS256`，过期时间默认 360 分钟（6 小时），由 `ACCESS_TOKEN_EXPIRE_MINUTES` 配置。密钥是 `JWT_SECRET_KEY`，用 `openssl rand -hex 32` 生成。
 
 `POST /login` 是网页表单入口，复用同一认证和签发函数。成功：设置 cookie `access_token`（HttpOnly、SameSite=Lax，经 HTTPS 时加 Secure），303 到公司列表。失败：见界面契约（200 + 表单错误），**不**对浏览器表单返回 JSON 401。JWT 含随机 `jti`。模板把 `HMAC(JWT_SECRET_KEY, "csrf:" + jti)` 渲染为隐藏字段；页面 POST 重新计算并按固定时间比较。页面依赖从 cookie 读取令牌；签名不对、过期、`sub` 对不上用户，或用户已 `disabled`，都回到登录页（可带 `flash` 说明会话已失效）。
 
@@ -832,7 +832,7 @@ Web 的按钮只插入 queued 任务，不提前修改 Issue 流程状态。v1 �
 | `GIT_AUTHOR_NAME` / `GIT_AUTHOR_EMAIL` | 提交身份。Committer 使用同一组值 |
 | `APP_ADMIN_USER` / `APP_ADMIN_PASSWORD` | 仅当 `users` 为空时写入第一行。口令不留在库的原文里 |
 | `JWT_SECRET_KEY` | 签发和校验 JWT 的 HS256 密钥 |
-| `ACCESS_TOKEN_EXPIRE_MINUTES` | 默认 30 |
+| `ACCESS_TOKEN_EXPIRE_MINUTES` | 默认 360（6 小时） |
 | `DOC_TIMEOUT_SEC` | 默认 900 |
 | `CODE_TIMEOUT_SEC` | 默认 1800 |
 | `WORKTREE_ROOT` | 系统专用 worktree 根目录，例如 `/var/lib/github-workflow/worktrees` |

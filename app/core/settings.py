@@ -57,7 +57,7 @@ def get_settings() -> Settings:
         app_admin_user=_env("APP_ADMIN_USER", "admin"),
         app_admin_password=_env("APP_ADMIN_PASSWORD"),
         jwt_secret_key=_env("JWT_SECRET_KEY", "change-me"),
-        access_token_expire_minutes=_env_int("ACCESS_TOKEN_EXPIRE_MINUTES", 30),
+        access_token_expire_minutes=_env_int("ACCESS_TOKEN_EXPIRE_MINUTES", 360),
         doc_timeout_sec=_env_int("DOC_TIMEOUT_SEC", 900),
         code_timeout_sec=_env_int("CODE_TIMEOUT_SEC", 1800),
         worktree_root=Path(_env("WORKTREE_ROOT", "/var/lib/github-workflow/worktrees")),

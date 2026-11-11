@@ -72,6 +72,38 @@ def is_clean(cwd: Path | str) -> bool:
     return run_git(["status", "--porcelain"], cwd=cwd) == ""
 
 
+def porcelain_path(line: str) -> str:
+    """Extract path from a `git status --porcelain` line (untracked/rename-safe enough for ?? / A / M)."""
+    raw = line.rstrip("\n")
+    if len(raw) >= 3 and raw[2] == " ":
+        path = raw[3:]
+    else:
+        path = raw.lstrip()
+    if " -> " in path:
+        path = path.split(" -> ", 1)[1]
+    return path.strip().strip('"').strip("/")
+
+
+def porcelain_untracked_covers(porcelain: str, rel: str) -> bool:
+    """True if porcelain lists rel itself or an untracked parent dir that contains it.
+
+    Git often reports only `?? docs/v0001-9/` for a new nested file; matching the
+    full file path alone would falsely fail write_doc validation.
+    """
+    rel_norm = rel.strip().strip("/")
+    if not rel_norm:
+        return False
+    for ln in porcelain.splitlines():
+        if not ln.strip():
+            continue
+        path = porcelain_path(ln)
+        if not path:
+            continue
+        if path == rel_norm or rel_norm.startswith(path + "/") or path.startswith(rel_norm + "/"):
+            return True
+    return False
+
+
 def branch_exists_local(cwd: Path | str, branch: str) -> bool:
     proc = subprocess.run(
         ["git", "show-ref", "--verify", "--quiet", f"refs/heads/{branch}"],

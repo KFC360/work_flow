@@ -24,6 +24,7 @@ from app.services.git_repo import (
     find_tip_commit_with_trailer,
     is_clean,
     parent_sha,
+    porcelain_untracked_covers,
     reset_hard,
     rev_parse,
     run_git,
@@ -133,12 +134,7 @@ def run_write_doc(db: Session, job: Job) -> None:
         for ln in lines:
             if not ln.startswith("??"):
                 raise AgentError("出现已跟踪文件的修改")
-        # accept exact file, nested path, or untracked parent dir covering the file
-        covered = any(
-            rel in ln or ln.rstrip("/").endswith(rel.split("/")[0]) or ln.endswith(f"{rel}")
-            for ln in lines
-        )
-        if not covered:
+        if not porcelain_untracked_covers(porcelain, rel):
             raise AgentError("未找到预期文档路径")
 
         text = target.read_text(encoding="utf-8")

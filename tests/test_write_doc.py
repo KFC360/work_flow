@@ -8,12 +8,21 @@ from app.crud import company as company_crud
 from app.crud import issue as issue_crud
 from app.crud import job as job_crud
 from app.crud import repository as repository_crud
+from app.services.git_repo import porcelain_untracked_covers
 from app.services.issues import design_doc_relpath
 from app.tasks.jobs import run_write_doc
 
 
 def test_design_path_format() -> None:
     assert design_doc_relpath("docs", 3, 13) == "docs/v0003-13/design.md"
+
+
+def test_porcelain_covers_untracked_parent_dir() -> None:
+    rel = "docs/v0001-9/design.md"
+    assert porcelain_untracked_covers("?? docs/v0001-9/\n", rel)
+    assert porcelain_untracked_covers("?? docs/v0001-9/design.md\n", rel)
+    assert not porcelain_untracked_covers("?? other.md\n", rel)
+    assert not porcelain_untracked_covers("", rel)
 
 
 def test_write_doc_success(db: Session, tmp_path: Path, monkeypatch) -> None:

@@ -30,6 +30,18 @@ def test_prompt_includes_foundation_when_present(tmp_path: Path) -> None:
     )
     assert "docs/README.md" in prompt
     assert "# foundation" in prompt
+    assert "@documentation" in prompt
+
+
+def test_codegen_prompt_mentions_ui_skill() -> None:
+    from app.services.prompts import codegen_prompt
+
+    prompt = codegen_prompt(
+        design_doc_path="docs/v0001-1/design.md",
+        design_doc_text="x",
+        foundation=None,
+    )
+    assert "@ui-ux-pro-max" in prompt
 
 
 def test_prompt_requires_pending_when_missing(tmp_path: Path) -> None:

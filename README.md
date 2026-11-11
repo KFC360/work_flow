@@ -78,8 +78,11 @@ cd /path/to/github_workflow   # 应用目录，如 ~/sites/work_flow
 git pull
 uv sync --extra dev
 uv run alembic upgrade head
+./scripts/sync_opencode_skills.sh   # 挂载内置 skills 给 OpenCode（软链到 ~/.config/opencode/skills）
 sudo supervisorctl restart github-workflow:*
 ```
+
+内置 skills 在 `agent_skills/`（`documentation`、`ui-ux-pro-max`）。权威在应用仓；生产挂到 OpenCode 全局发现路径，**不**写入目标仓 worktree。可选配置见 `deploy/opencode/opencode.json.example`。
 
 目标仓（独立 clone，如 `/home/linuxuser/repos/work_flow`）也需含基石文档（与应用仓同一远程时 `git pull` 即可）：
 

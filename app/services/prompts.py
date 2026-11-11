@@ -54,8 +54,9 @@ def codegen_prompt(
         "先读设计文档路径。"
         "文档里的「待确认」若阻塞实现，以非零退出，并在标准输出说明缺的是哪一条。\n"
         "按文档实现代码。不要提交、不要推送、不要创建 PR。\n"
-        "严禁对任何数据库执行迁移、drop、truncate、seed；严禁运行 pytest/"
-        "alembic/psql/docker compose（会误伤生产库）。只改工作区内的代码与模板。\n"
+        "若环境提供 TEST_DATABASE_URL / DATABASE_URL，那是 Worker 为本任务创建的临时库 "
+        "（库名 gw_job_*），pytest 只能连它。严禁连接或操作其它数据库；"
+        "严禁 docker compose down、drop 生产库、改宿主机 .env。只改工作区内的代码与模板。\n"
         f"设计文档路径：{design_doc_path}\n\n"
         f"设计文档正文：\n{design_doc_text}\n"
     )

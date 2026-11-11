@@ -41,6 +41,14 @@ class Settings:
     claude_args: str
     opencode_args: str
     config_yaml_path: Path
+    agent_test_db_enabled: bool
+
+
+def _env_bool(name: str, default: bool) -> bool:
+    raw = os.getenv(name)
+    if raw is None or raw == "":
+        return default
+    return raw.strip().lower() in {"1", "true", "yes", "on"}
 
 
 @lru_cache
@@ -64,4 +72,5 @@ def get_settings() -> Settings:
         claude_args=_env("CLAUDE_ARGS"),
         opencode_args=_env("OPENCODE_ARGS"),
         config_yaml_path=PROJECT_ROOT / "config.yaml",
+        agent_test_db_enabled=_env_bool("AGENT_TEST_DB_ENABLED", True),
     )

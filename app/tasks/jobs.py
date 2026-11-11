@@ -13,6 +13,12 @@ from app.models.issue import Issue
 from app.models.job import Job
 from app.models.repository import Repository
 from app.services.agent import AgentError, read_log_excerpt, run_agent
+from app.services.agent_test_db import (
+    AgentTestDbError,
+    agent_env_for_test_db,
+    create_job_database,
+    drop_job_database,
+)
 from app.services.config_agent import read_agent
 from app.services.foundation import read_foundation_from_worktree
 from app.services.git_repo import (
@@ -362,14 +368,35 @@ def _phase_run_agent(db: Session, issue: Issue, job: Job, worktree: Path, settin
         foundation=foundation,
     )
     log_path = Path(job.log_path) if job.log_path else PROJECT_ROOT / "logs" / "jobs" / f"{job.id}.log"
-    code = run_agent(
-        agent,
-        prompt,
-        cwd=worktree,
-        timeout_sec=settings.code_timeout_sec,
-        log_path=log_path,
-        on_progress=_agent_progress(db, job, issue, log_path),
-    )
+    env_extra: dict[str, str] | None = None
+    test_db_job_id: int | None = None
+    log_preamble = ""
+    if settings.agent_test_db_enabled:
+        try:
+            created = create_job_database(settings.database_url, job.id)
+            test_db_job_id = job.id
+            env_extra = agent_env_for_test_db(created.url)
+            log_preamble = f"# agent test database: {created.name}\n"
+        except AgentTestDbError as exc:
+            log_preamble = (
+                f"# agent test database unavailable ({exc}); "
+                "running without DATABASE_URL (pytest against prod blocked)\n"
+            )
+            logger.warning(f"agent test db create failed for job {job.id}: {exc}")
+    try:
+        code = run_agent(
+            agent,
+            prompt,
+            cwd=worktree,
+            timeout_sec=settings.code_timeout_sec,
+            log_path=log_path,
+            on_progress=_agent_progress(db, job, issue, log_path),
+            env_extra=env_extra,
+            log_preamble=log_preamble or None,
+        )
+    finally:
+        if test_db_job_id is not None:
+            drop_job_database(settings.database_url, test_db_job_id)
     job.log_excerpt = read_log_excerpt(log_path)
     job.exit_code = code
     db.commit()

@@ -58,7 +58,7 @@ _AGENT_ENV_BLOCKLIST_PREFIXES = (
 )
 
 
-def _agent_env() -> dict[str, str]:
+def _agent_env(extra: dict[str, str] | None = None) -> dict[str, str]:
     env = {
         k: v
         for k, v in os.environ.items()
@@ -78,8 +78,10 @@ def _agent_env() -> dict[str, str]:
     env.setdefault("TERM", "dumb")
     env.setdefault("NO_COLOR", "1")
     env.setdefault("CI", "1")
-    # Force any nested tooling away from the Worker DB URL.
+    # Mark agent runs; ephemeral test DB URLs are re-injected via extra only.
     env["GITHUB_WORKFLOW_AGENT"] = "1"
+    if extra:
+        env.update(extra)
     return env
 
 
@@ -110,6 +112,8 @@ def run_agent(
     log_path: Path,
     on_progress: Callable[[], None] | None = None,
     progress_interval_sec: float = PROGRESS_HEARTBEAT_INTERVAL_SEC,
+    env_extra: dict[str, str] | None = None,
+    log_preamble: str | None = None,
 ) -> int:
     cmd = build_command(agent, prompt)
     # Match interactive shell: closed stdin + line-buffered stdout when possible.
@@ -120,6 +124,8 @@ def run_agent(
     log_path.parent.mkdir(parents=True, exist_ok=True)
     with log_path.open("w", encoding="utf-8", buffering=1) as logf:
         logf.write(f"$ {' '.join(cmd)}\n")
+        if log_preamble:
+            logf.write(log_preamble if log_preamble.endswith("\n") else log_preamble + "\n")
         logf.flush()
         try:
             proc = subprocess.Popen(
@@ -129,7 +135,7 @@ def run_agent(
                 stdout=subprocess.PIPE,
                 stderr=subprocess.STDOUT,
                 start_new_session=True,
-                env=_agent_env(),
+                env=_agent_env(env_extra),
                 bufsize=0,
             )
         except FileNotFoundError as exc:

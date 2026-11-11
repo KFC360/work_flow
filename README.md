@@ -84,6 +84,12 @@ sudo supervisorctl restart github-workflow:*
 
 内置 skills 在 `agent_skills/`（`documentation`、`ui-ux-pro-max`）。权威在应用仓；生产挂到 OpenCode 全局发现路径，**不**写入目标仓 worktree。可选配置见 `deploy/opencode/opencode.json.example`。
 
+生成代码时 Worker 可为代理创建临时库 `gw_job_{job_id}`（`AGENT_TEST_DB_ENABLED`，默认开），只把该库的 URL 注入代理环境；任务结束删除。生产角色需 `CREATEDB`：
+
+```bash
+sudo -u postgres psql -c 'ALTER ROLE github_workflow CREATEDB;'
+```
+
 目标仓（独立 clone，如 `/home/linuxuser/repos/work_flow`）也需含基石文档（与应用仓同一远程时 `git pull` 即可）：
 
 ```bash

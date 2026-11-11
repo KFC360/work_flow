@@ -1,8 +1,12 @@
 from __future__ import annotations
 
 import os
+import select
 import shlex
+import shutil
+import signal
 import subprocess
+import time
 from pathlib import Path
 
 from app.core.settings import get_settings
@@ -35,6 +39,32 @@ def build_command(agent: str, prompt: str) -> list[str]:
     raise AgentError(f"unknown agent {agent}")
 
 
+def _agent_env() -> dict[str, str]:
+    env = os.environ.copy()
+    env.setdefault("TERM", "dumb")
+    env.setdefault("NO_COLOR", "1")
+    env.setdefault("CI", "1")
+    return env
+
+
+def _kill_process_group(pid: int) -> None:
+    try:
+        os.killpg(pid, signal.SIGTERM)
+    except ProcessLookupError:
+        return
+    deadline = time.monotonic() + 5
+    while time.monotonic() < deadline:
+        try:
+            os.killpg(pid, 0)
+        except ProcessLookupError:
+            return
+        time.sleep(0.2)
+    try:
+        os.killpg(pid, signal.SIGKILL)
+    except ProcessLookupError:
+        return
+
+
 def run_agent(
     agent: str,
     prompt: str,
@@ -44,26 +74,63 @@ def run_agent(
     log_path: Path,
 ) -> int:
     cmd = build_command(agent, prompt)
+    # Match interactive shell: closed stdin + line-buffered stdout when possible.
+    # Supervisor-spawned runs without a TTY previously hung with empty logs.
+    if shutil.which("stdbuf"):
+        cmd = ["stdbuf", "-oL", "-eL", *cmd]
+
     log_path.parent.mkdir(parents=True, exist_ok=True)
-    with log_path.open("w", encoding="utf-8") as logf:
+    with log_path.open("w", encoding="utf-8", buffering=1) as logf:
         logf.write(f"$ {' '.join(cmd)}\n")
         logf.flush()
         try:
-            proc = subprocess.run(
+            proc = subprocess.Popen(
                 cmd,
                 cwd=str(cwd),
-                stdout=logf,
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.PIPE,
                 stderr=subprocess.STDOUT,
-                timeout=timeout_sec,
-                check=False,
                 start_new_session=True,
-                env=os.environ.copy(),
+                env=_agent_env(),
+                bufsize=0,
             )
         except FileNotFoundError as exc:
             raise AgentError(f"找不到命令 {cmd[0]}") from exc
-        except subprocess.TimeoutExpired as exc:
-            raise AgentError("代理超时", exit_code=None) from exc
-    return proc.returncode
+
+        assert proc.stdout is not None
+        deadline = time.monotonic() + timeout_sec
+        try:
+            while True:
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    _kill_process_group(proc.pid)
+                    raise AgentError("代理超时", exit_code=None)
+                ready, _, _ = select.select([proc.stdout], [], [], min(1.0, max(remaining, 0.05)))
+                if ready:
+                    chunk = proc.stdout.read(4096)
+                    if not chunk:
+                        break
+                    logf.write(chunk.decode("utf-8", errors="replace"))
+                    logf.flush()
+                elif proc.poll() is not None:
+                    # Process exited; drain any remaining buffered bytes.
+                    while True:
+                        chunk = proc.stdout.read(4096)
+                        if not chunk:
+                            break
+                        logf.write(chunk.decode("utf-8", errors="replace"))
+                        logf.flush()
+                    break
+        finally:
+            if proc.poll() is None:
+                _kill_process_group(proc.pid)
+            try:
+                proc.wait(timeout=10)
+            except subprocess.TimeoutExpired:
+                _kill_process_group(proc.pid)
+                proc.wait(timeout=5)
+
+        return proc.returncode if proc.returncode is not None else -1
 
 
 def read_log_excerpt(log_path: Path, max_bytes: int = 8 * 1024) -> str:

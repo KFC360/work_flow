@@ -7,9 +7,11 @@ import shutil
 import signal
 import subprocess
 import time
+from collections.abc import Callable
 from pathlib import Path
 
 from app.core.settings import get_settings
+from app.services.worker_heartbeat import PROGRESS_HEARTBEAT_INTERVAL_SEC
 
 
 class AgentError(Exception):
@@ -72,6 +74,8 @@ def run_agent(
     cwd: Path,
     timeout_sec: int,
     log_path: Path,
+    on_progress: Callable[[], None] | None = None,
+    progress_interval_sec: float = PROGRESS_HEARTBEAT_INTERVAL_SEC,
 ) -> int:
     cmd = build_command(agent, prompt)
     # Match interactive shell: closed stdin + line-buffered stdout when possible.
@@ -99,6 +103,17 @@ def run_agent(
 
         assert proc.stdout is not None
         deadline = time.monotonic() + timeout_sec
+        last_progress = time.monotonic()
+
+        def maybe_progress(force: bool = False) -> None:
+            nonlocal last_progress
+            if on_progress is None:
+                return
+            now = time.monotonic()
+            if force or now - last_progress >= progress_interval_sec:
+                on_progress()
+                last_progress = now
+
         try:
             while True:
                 remaining = deadline - time.monotonic()
@@ -106,12 +121,14 @@ def run_agent(
                     _kill_process_group(proc.pid)
                     raise AgentError("代理超时", exit_code=None)
                 ready, _, _ = select.select([proc.stdout], [], [], min(1.0, max(remaining, 0.05)))
+                maybe_progress()
                 if ready:
                     chunk = proc.stdout.read(4096)
                     if not chunk:
                         break
                     logf.write(chunk.decode("utf-8", errors="replace"))
                     logf.flush()
+                    maybe_progress()
                 elif proc.poll() is not None:
                     # Process exited; drain any remaining buffered bytes.
                     while True:
@@ -129,6 +146,7 @@ def run_agent(
             except subprocess.TimeoutExpired:
                 _kill_process_group(proc.pid)
                 proc.wait(timeout=5)
+            maybe_progress(force=True)
 
         return proc.returncode if proc.returncode is not None else -1
 

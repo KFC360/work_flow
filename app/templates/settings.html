@@ -5,6 +5,16 @@
 {% if not agent %}
 <div class="alert alert-warning">尚未选择代理。编写文档与生成代码前必须配置。</div>
 {% endif %}
+<div class="card bg-base-100 shadow max-w-lg mb-4">
+  <div class="card-body">
+    <h2 class="card-title text-base">Worker 状态</h2>
+    <p class="text-sm">{{ worker_label }}</p>
+    {% if worker_updated_at %}
+    <p class="text-xs opacity-70 font-mono-data">心跳：{{ worker_updated_at }}</p>
+    {% endif %}
+    <p class="text-xs opacity-60 font-mono-data">{{ worker_heartbeat_path }}</p>
+  </div>
+</div>
 <div class="card bg-base-100 shadow max-w-lg">
   <div class="card-body">
     <p class="text-sm opacity-70">当前选择会用于之后所有仓库的编写文档和生成代码。</p>

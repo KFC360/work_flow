@@ -2,7 +2,7 @@
 
 内部工具：GitHub Issues Webhook → 公司/仓库浏览 → 编写设计文档 → 生成代码 → 创建 PR。
 
-产品设计见仓库根目录 `docs/github_workflow/design.md`。OpenSpec 变更：`openspec/changes/github-workflow`。
+本仓库基石入口：`docs/README.md`；完整产品设计：`docs/architecture/design.md`。OpenSpec：`openspec/changes/github-workflow`、`docs-foundation-and-worker-observability`。
 
 ## 架构要点
 
@@ -11,6 +11,8 @@
 - **v1 只运行一个 Worker**：Inbox 循环 + Pipeline 循环；Pipeline 全局同时只跑一条代理任务
 - 代理在 `WORKTREE_ROOT` 下的隔离 git worktree 中运行，不直接污染仓库页登记的 `local_path`
 - 全站代理写在项目根 `config.yaml`（`opencode` | `claude`），设置页原子替换
+- **文档驱动**：基石 `{doc_dir}/README.md` + 迭代 `{doc_dir}/v{n}-{issue}/design.md`；基石缺失时警告不阻断
+- **可观测性**：Issue 详情轮询任务日志尾部（无需 SSH）；设置页展示 Worker 心跳（`logs/worker-heartbeat.json`）
 
 ## 运行形态
 
@@ -72,11 +74,18 @@ sudo supervisorctl status
 升级代码：
 
 ```bash
-cd /path/to/github_workflow
+cd /path/to/github_workflow   # 应用目录，如 ~/sites/work_flow
 git pull
 uv sync --extra dev
 uv run alembic upgrade head
-sudo supervisorctl restart github-workflow-web github-workflow-worker
+sudo supervisorctl restart github-workflow:*
+```
+
+目标仓（独立 clone，如 `/home/linuxuser/repos/work_flow`）也需含基石文档（与应用仓同一远程时 `git pull` 即可）：
+
+```bash
+test -f /home/linuxuser/repos/work_flow/docs/README.md && \
+test -f /home/linuxuser/repos/work_flow/docs/architecture/design.md && echo ok
 ```
 
 ## 安全与运维
@@ -85,6 +94,7 @@ sudo supervisorctl restart github-workflow-web github-workflow-worker
 - 部署前轮换 Webhook Secret，只放环境变量 / `.env`，勿进 git
 - Nginx：`/docs`、`/redoc`、`/openapi.json` 用 `auth_basic`；Webhook **不要** Basic Auth
 - 页面 JWT + CSRF；`WORKTREE_ROOT` 示例见上
+- 任务日志：`logs/jobs/{id}.log`；网页 Issue 详情可看尾部；Worker 心跳：`logs/worker-heartbeat.json`
 
 ## 测试
 

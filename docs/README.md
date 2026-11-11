@@ -1,0 +1,29 @@
+# GitHub 工作流 · 基石文档
+
+本文档是本仓库的**基石入口**（`docs/README.md`）。功能迭代设计写在 `docs/v{迭代序号}-{Issue编号}/design.md`，描述相对本基石的增量，不替代本入口。
+
+编写文档 / 生成代码时：**先读本入口，再读** [`docs/architecture/design.md`](architecture/design.md)（完整产品设计，已从历史稿迁入本仓）。
+
+## 文档驱动约定
+
+1. 改架构、模块边界、状态机或数据模型 → 先更新基石（本文件及 `docs/architecture/`）。
+2. 单个功能 Issue → 走系统流水线写出迭代设计，再生成代码与 PR。
+3. 代理写文档 / 写代码必须先读本入口与 `docs/architecture/design.md`；若缺失，迭代文档「待确认」须写明。
+
+## 系统要点（摘要）
+
+- Web（FastAPI）与唯一 Worker 分进程，经 PostgreSQL 交接。
+- Webhook 验签后入 Inbox 并 202；Worker 同步 GitHub 并跑流水线。
+- 编写文档 / 生成代码在 `WORKTREE_ROOT` 隔离 worktree 中执行，不污染登记的 `local_path`。
+- 迭代文档路径：`docs/v{n}-{issue}/design.md`；基石入口：`docs/README.md`；完整设计：`docs/architecture/design.md`。
+- Issue 详情可轮询任务日志尾部；Worker 心跳：`logs/worker-heartbeat.json`。
+
+## 文档索引
+
+| 主题 | 位置 |
+| --- | --- |
+| 完整产品设计（目标、决策、数据模型、状态机、部署等） | [`docs/architecture/design.md`](architecture/design.md) |
+| 本入口（发现路径与约定） | `docs/README.md` |
+| 功能迭代增量 | `docs/v{n}-{issue}/design.md` |
+
+后续若把 `architecture/design.md` 拆成多文件，仍由本入口索引；系统只强制读取本入口路径。

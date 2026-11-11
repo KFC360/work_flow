@@ -13,10 +13,12 @@ from app.database.connect import SessionLocal
 from app.models.issue import Issue
 from app.models.job import Job
 from app.models.webhook_delivery import WebhookDelivery
+from app.services.worker_heartbeat import IDLE_HEARTBEAT_INTERVAL_SEC, write_heartbeat
 from app.tasks.inbox import process_one_delivery
 from app.tasks.jobs import execute_job
 
 _stop = False
+_last_idle_heartbeat = 0.0
 
 
 def _handle_signal(signum, frame) -> None:  # noqa: ARG001
@@ -73,6 +75,9 @@ def main() -> None:
     signal.signal(signal.SIGINT, _handle_signal)
     recover_on_startup()
     logger.info("worker started (single process, inbox + pipeline)")
+    global _last_idle_heartbeat
+    write_heartbeat()
+    _last_idle_heartbeat = time.monotonic()
     while not _stop:
         did_inbox = False
         did_pipe = False
@@ -83,6 +88,10 @@ def main() -> None:
             db.close()
         if not _stop:
             did_pipe = pipeline_once()
+        now = time.monotonic()
+        if not did_pipe and now - _last_idle_heartbeat >= IDLE_HEARTBEAT_INTERVAL_SEC:
+            write_heartbeat()
+            _last_idle_heartbeat = now
         if not did_inbox and not did_pipe:
             time.sleep(1.0)
     logger.info("worker stopped")

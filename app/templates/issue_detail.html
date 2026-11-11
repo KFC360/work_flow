@@ -6,6 +6,9 @@
   <a class="link" href="{{ issue.html_url }}" target="_blank" rel="noopener">GitHub</a>
 </div>
 
+{% if foundation_missing %}
+<div class="alert alert-warning">基石入口 {{ foundation_path }} 在 origin/{{ repo.default_branch }} 上不存在。编写文档仍可进行，请在迭代文档「待确认」中记录。</div>
+{% endif %}
 {% if stale_doc %}
 <div class="alert alert-warning">Issue 在文档完成后有更新，如需同步请重新编写文档。</div>
 {% endif %}
@@ -44,6 +47,12 @@
         {% if issue.pr_url %}<p>PR：<a class="link" href="{{ issue.pr_url }}" target="_blank" rel="noopener">{{ issue.pr_url }}</a></p>{% endif %}
         {% if latest_job %}
         <p>最近任务：{{ latest_job.action }} / {{ latest_job.status }}</p>
+        {% if latest_job.action == 'generate_code' and issue.codegen_phase %}
+        <p>阶段：{{ issue.codegen_phase }}</p>
+        {% endif %}
+        {% endif %}
+        {% if related_worker_label %}
+        <p>Worker：{{ related_worker_label }}</p>
         {% endif %}
       </div>
     </div>
@@ -65,14 +74,12 @@
 </div>
 {% endif %}
 
-{% if latest_job and latest_job.log_excerpt %}
 <div class="card bg-base-100 shadow">
   <div class="card-body">
-    <h2 class="card-title text-base">日志摘录</h2>
-    <pre id="issue-log" class="whitespace-pre-wrap font-mono-data text-xs bg-base-200 p-3 rounded max-h-96 overflow-auto">{{ latest_job.log_excerpt }}</pre>
+    <h2 class="card-title text-base">任务日志</h2>
+    <pre id="issue-log" class="whitespace-pre-wrap font-mono-data text-xs bg-base-200 p-3 rounded max-h-96 overflow-auto">{{ log_text or '（暂无日志）' }}</pre>
   </div>
 </div>
-{% endif %}
 {% endblock %}
 
 {% block scripts %}
@@ -94,10 +101,16 @@
         if (!html) return;
         var box = document.getElementById('issue-status');
         if (box) box.innerHTML = html;
+        var live = document.getElementById('issue-log-live');
+        var logBox = document.getElementById('issue-log');
+        if (live && logBox) {
+          logBox.textContent = live.textContent;
+          logBox.scrollTop = logBox.scrollHeight;
+        }
         if (html.indexOf('data-done="1"') !== -1) clearInterval(timer);
       })
       .catch(function () {});
-  }, 5000);
+  }, 3000);
 })();
 </script>
 {% endif %}

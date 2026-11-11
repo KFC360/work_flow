@@ -14,6 +14,7 @@ from app.database.connect import get_db
 from app.dependencies.auth import require_csrf, require_page_user
 from app.models.user import User
 from app.services.config_agent import read_agent, write_agent
+from app.services.worker_heartbeat import HEARTBEAT_PATH, read_heartbeat
 
 router = APIRouter(tags=["settings"])
 templates = Jinja2Templates(directory=str(PROJECT_ROOT / "app" / "templates"))
@@ -27,6 +28,7 @@ def settings_page(
 ):
     _ = db
     jti = getattr(user, "_token_jti", "")
+    heartbeat = read_heartbeat()
     return templates.TemplateResponse(
         request,
         "settings.html",
@@ -38,6 +40,9 @@ def settings_page(
             "breadcrumbs": [("设置", None)],
             "flash": request.query_params.get("flash"),
             "msg": request.query_params.get("msg"),
+            "worker_label": heartbeat.label,
+            "worker_updated_at": heartbeat.updated_at,
+            "worker_heartbeat_path": str(HEARTBEAT_PATH),
         },
     )
 

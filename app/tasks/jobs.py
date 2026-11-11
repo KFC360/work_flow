@@ -14,6 +14,7 @@ from app.models.job import Job
 from app.models.repository import Repository
 from app.services.agent import AgentError, read_log_excerpt, run_agent
 from app.services.config_agent import read_agent
+from app.services.foundation import read_foundation_from_worktree
 from app.services.git_repo import (
     ISSUE_TRAILER,
     GitError,
@@ -30,6 +31,16 @@ from app.services.git_repo import (
 from app.services.github_api import GitHubClient
 from app.services.issues import design_doc_relpath
 from app.services.prompts import codegen_prompt, write_doc_prompt
+from app.services.worker_heartbeat import write_heartbeat
+
+
+def _agent_progress(db: Session, job: Job, issue: Issue, log_path: Path):
+    def _cb() -> None:
+        job.log_excerpt = read_log_excerpt(log_path, max_bytes=16 * 1024)
+        db.commit()
+        write_heartbeat(job_id=job.id, issue_id=issue.id, action=job.action)
+
+    return _cb
 
 
 def _fail_issue(db: Session, issue: Issue, job: Job, *, action: str, error: str) -> None:
@@ -93,13 +104,20 @@ def run_write_doc(db: Session, job: Job) -> None:
             iteration_no = _next_iteration(db, repo.id)
             rel = design_doc_relpath(repo.doc_dir, iteration_no, issue.number)
 
-        prompt = write_doc_prompt(title=issue.title, body=issue.body, rel_path=rel)
+        foundation = read_foundation_from_worktree(worktree, doc_dir=repo.doc_dir)
+        prompt = write_doc_prompt(
+            title=issue.title,
+            body=issue.body,
+            rel_path=rel,
+            foundation=foundation,
+        )
         code = run_agent(
             agent,
             prompt,
             cwd=worktree,
             timeout_sec=settings.doc_timeout_sec,
             log_path=log_path,
+            on_progress=_agent_progress(db, job, issue, log_path),
         )
         job.log_excerpt = read_log_excerpt(log_path)
         job.exit_code = code
@@ -339,9 +357,13 @@ def _phase_run_agent(db: Session, issue: Issue, job: Job, worktree: Path, settin
     agent = job.agent or read_agent()
     if not agent:
         raise AgentError("未选代理")
+    repo = db.get(Repository, issue.repository_id)
+    doc_dir = repo.doc_dir if repo is not None else "docs"
+    foundation = read_foundation_from_worktree(worktree, doc_dir=doc_dir)
     prompt = codegen_prompt(
         design_doc_path=issue.design_doc_path or "",
         design_doc_text=issue.design_doc_text or "",
+        foundation=foundation,
     )
     log_path = Path(job.log_path) if job.log_path else PROJECT_ROOT / "logs" / "jobs" / f"{job.id}.log"
     code = run_agent(
@@ -350,6 +372,7 @@ def _phase_run_agent(db: Session, issue: Issue, job: Job, worktree: Path, settin
         cwd=worktree,
         timeout_sec=settings.code_timeout_sec,
         log_path=log_path,
+        on_progress=_agent_progress(db, job, issue, log_path),
     )
     job.log_excerpt = read_log_excerpt(log_path)
     job.exit_code = code

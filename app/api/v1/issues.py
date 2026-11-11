@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import html
 from typing import Annotated
 from urllib.parse import quote
 
@@ -19,6 +20,7 @@ from app.dependencies.auth import require_csrf, require_page_user
 from app.models.user import User
 from app.services.actions import KIND_LABELS, STATUS_LABELS, actions_for
 from app.services.config_agent import read_agent
+from app.services.foundation import foundation_relpath, read_foundation_from_origin
 from app.services.issues import (
     KIND_FEATURE,
     KIND_SUPPORT,
@@ -26,6 +28,8 @@ from app.services.issues import (
     STATUS_SUPPORT_OPEN,
     classify_labels,
 )
+from app.services.job_logs import read_job_log_tail, safe_job_log_path
+from app.services.worker_heartbeat import read_heartbeat
 
 router = APIRouter(tags=["issues"])
 templates = Jinja2Templates(directory=str(PROJECT_ROOT / "app" / "templates"))
@@ -123,6 +127,23 @@ def issue_detail(
         and issue.github_updated_at > issue.design_source_updated_at
     )
     latest = job_crud.latest_for_issue(db, issue.id)
+    foundation_missing = False
+    if repo.local_path:
+        try:
+            foundation_missing = not read_foundation_from_origin(
+                repo.local_path,
+                default_branch=repo.default_branch,
+                doc_dir=repo.doc_dir,
+            ).exists
+        except OSError:
+            foundation_missing = True
+    heartbeat = read_heartbeat()
+    related_running = (
+        heartbeat.status == "running" and heartbeat.issue_id == issue.id
+    )
+    log_text = ""
+    if latest:
+        log_text = read_job_log_tail(latest.log_path) or (latest.log_excerpt or "")
     return templates.TemplateResponse(
         request,
         "issue_detail.html",
@@ -137,6 +158,10 @@ def issue_detail(
             latest_job=latest,
             stale_doc=stale_doc,
             label_mismatch=label_mismatch,
+            foundation_missing=foundation_missing,
+            foundation_path=foundation_relpath(repo.doc_dir),
+            related_worker_label=heartbeat.label if related_running else None,
+            log_text=log_text,
             polling=issue.status in {"drafting", "generating"},
             flash=request.query_params.get("flash"),
             msg=request.query_params.get("msg"),
@@ -150,6 +175,36 @@ def issue_detail(
     )
 
 
+def _status_fragment_html(issue, latest, *, heartbeat_label: str | None) -> str:
+    done = "0" if issue.status in {"drafting", "generating"} else "1"
+    err = html.escape(issue.last_error or "—")
+    status = html.escape(STATUS_LABELS.get(issue.status, issue.status))
+    parts = [
+        f'<div data-done="{done}">',
+        f'<p>流程状态：<span class="badge">{status}</span></p>',
+        f"<p>错误：{err}</p>",
+    ]
+    if latest:
+        parts.append(
+            f"<p>最近任务：{html.escape(latest.action)} / {html.escape(latest.status)}</p>"
+        )
+        if latest.action == "generate_code" and issue.codegen_phase:
+            parts.append(f"<p>阶段：{html.escape(issue.codegen_phase)}</p>")
+        log_text = read_job_log_tail(latest.log_path) or (latest.log_excerpt or "")
+        if latest.log_path and safe_job_log_path(latest.log_path) is None and not latest.log_excerpt:
+            log_text = ""
+            parts.append('<p class="text-warning">日志路径不可用</p>')
+        parts.append(
+            '<pre id="issue-log-live" class="whitespace-pre-wrap font-mono-data text-xs '
+            'bg-base-200 p-3 rounded max-h-96 overflow-auto">'
+            f"{html.escape(log_text)}</pre>"
+        )
+    if heartbeat_label:
+        parts.append(f"<p>Worker：{html.escape(heartbeat_label)}</p>")
+    parts.append("</div>")
+    return "".join(parts)
+
+
 @router.get("/issues/{issue_id}/status-fragment", response_class=HTMLResponse)
 def issue_status_fragment(
     issue_id: int,
@@ -161,16 +216,15 @@ def issue_status_fragment(
     if issue is None:
         return HTMLResponse("not found", status_code=404)
     latest = job_crud.latest_for_issue(db, issue.id)
-    done = "0" if issue.status in {"drafting", "generating"} else "1"
-    html = (
-        f'<div data-done="{done}">'
-        f"<p>流程状态：<span class=\"badge\">{STATUS_LABELS.get(issue.status, issue.status)}</span></p>"
-        f"<p>错误：{issue.last_error or '—'}</p>"
+    heartbeat = read_heartbeat()
+    related = heartbeat.status == "running" and heartbeat.issue_id == issue.id
+    return HTMLResponse(
+        _status_fragment_html(
+            issue,
+            latest,
+            heartbeat_label=heartbeat.label if related else None,
+        )
     )
-    if latest and latest.log_excerpt:
-        html += f"<p>日志摘录长度：{len(latest.log_excerpt)}</p>"
-    html += "</div>"
-    return HTMLResponse(html)
 
 
 @router.post("/issues/{issue_id}/classify/{target}")

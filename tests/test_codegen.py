@@ -89,12 +89,14 @@ def _settings_stub(tmp_path: Path, monkeypatch):
 
 
 def _agent_writes_src(rel: str = "src/hello.py", content: str = "print('hi')\n"):
-    def fake_agent(agent, prompt, *, cwd, timeout_sec, log_path):
+    def fake_agent(agent, prompt, *, cwd, timeout_sec, log_path, on_progress=None, **_kwargs):
         path = Path(cwd) / rel
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(content, encoding="utf-8")
         log_path.parent.mkdir(parents=True, exist_ok=True)
         log_path.write_text("agent ok\n", encoding="utf-8")
+        if on_progress:
+            on_progress()
         return 0
 
     return fake_agent
@@ -134,7 +136,7 @@ def test_agent_interrupt_retry_resets_to_doc_sha(db: Session, tmp_path: Path, mo
 
     calls = {"n": 0}
 
-    def flaky_agent(agent, prompt, *, cwd, timeout_sec, log_path):
+    def flaky_agent(agent, prompt, *, cwd, timeout_sec, log_path, on_progress=None, **_kwargs):
         calls["n"] += 1
         path = Path(cwd) / "src" / "partial.py"
         path.parent.mkdir(parents=True, exist_ok=True)

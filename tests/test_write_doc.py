@@ -90,13 +90,16 @@ def test_write_doc_success(db: Session, tmp_path: Path, monkeypatch) -> None:
     )
     monkeypatch.setattr("app.tasks.jobs.read_agent", lambda: "claude")
 
-    def fake_agent(agent, prompt, *, cwd, timeout_sec, log_path):
+    def fake_agent(agent, prompt, *, cwd, timeout_sec, log_path, on_progress=None):
+        assert "基石" in prompt or "docs/README.md" in prompt or "待确认" in prompt
         rel = "docs/v0001-9/design.md"
         path = Path(cwd) / rel
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text("# design\n\nbody\n", encoding="utf-8")
         log_path.parent.mkdir(parents=True, exist_ok=True)
         log_path.write_text("ok\n", encoding="utf-8")
+        if on_progress:
+            on_progress()
         return 0
 
     monkeypatch.setattr("app.tasks.jobs.run_agent", fake_agent)

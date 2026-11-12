@@ -740,7 +740,7 @@ failed 投递可以在页面点「重试投递」改回 queued。系统不依赖
 
 面包屑：公司 → 仓库 → `#编号 标题`。
 
-展示：标题与 GitHub 外链、正文（服务端 Markdown 渲染后经 HTML 白名单消毒；链接仅允许 `http` / `https` 并带 `rel="noopener noreferrer"`，代码块与表格内部滚动）、本地类型、GitHub Type、流程状态、文档批准状态与时间、GitHub 状态、全部 GitHub 标签、设计文档路径、设计文档全文（同样走服务端 Markdown + nh3 白名单消毒，标题从 `h3` 起并保留层级；长文档、代码块与表格在卡片内滚动；渲染失败时回退到自动转义的源文 `<pre>`）、分支、PR 链接、最近一次任务的状态与日志摘录、`last_error`。桌面 `xl` 下使用 10 列栅格：正文、设计文档与审阅卡占 6 列，任务与 Worker、最新任务日志占 4 列；小于 `xl` 时按正文 →（设计文档）→（审阅）→ 任务 → 日志单列展示。
+展示：标题与 GitHub 外链、正文（服务端 Markdown 渲染后经 HTML 白名单消毒；链接仅允许 `http` / `https` 并带 `rel="noopener noreferrer"`，代码块与表格内部滚动。正文卡默认折叠，按渲染后可视行显示首行、省略行与末两行；可视行 ≤ 3 时显示全文并隐藏控件，无正文保持空状态。展开后显示全文，折叠状态不持久化）、本地类型、GitHub Type、流程状态、文档批准状态与时间、GitHub 状态、全部 GitHub 标签、设计文档路径、设计文档全文（同样走服务端 Markdown + nh3 白名单消毒，标题从 `h3` 起并保留层级；长文档、代码块与表格在卡片内滚动；渲染失败时回退到自动转义的源文 `<pre>`）、分支、PR 链接、最近一次任务的状态与日志摘录、`last_error`。桌面 `xl` 下使用 10 列栅格：正文、设计文档与审阅卡占 6 列，任务与 Worker、最新任务日志占 4 列；小于 `xl` 时按正文 →（设计文档）→（审阅）→ 任务 → 日志单列展示。
 
 操作与列表相同，待生成时额外有「重新编写文档」（需确认；文案写明会覆盖库内文档正文，路径与迭代号不变，成功后需要重新批准）。`github_updated_at > design_source_updated_at` 时页顶 `alert-warning`「Issue 在文档完成后有更新，如需同步请重新编写文档」。标签与本地类型不一致时同样 warning。
 
@@ -754,7 +754,7 @@ failed 投递可以在页面点「重试投递」改回 queued。系统不依赖
 - 意见输入：`保存意见` 只写 `design_feedback`；`请代理修订` 在同一事务写入 `revise_request` 并排队 `revise_doc`，提交前二次确认；
 - 最近 100 条审阅历史。`pending_confirm` / `pending_reject` 不重复进历史流水，直接显示在待确认项状态上；旧 `doc_sha256` 的记录标记「旧版本文档」。
 
-设计文档卡头部在可编辑时提供「编辑文档」，进入 `/issues/{id}/design/edit`。编辑对象是库内 `design_doc_text`，保存走 POST + CSRF，成功后清空批准并写 `human_edit` 审计；仍按现有 Markdown + nh3 白名单渲染。不做协同编辑、版本锁或预览。
+设计文档卡头部在可编辑时提供「编辑文档」，进入 `/issues/{id}?edit=1#design-doc`，在卡片内渲染编辑态。旧地址 `/issues/{id}/design/edit` 仍保留为 303 兼容跳转。编辑可用性独立于审阅前置：功能迭代、GitHub open、正文非空、`codegen_phase = none`、无 active Job，且状态为待生成，或失败动作为 `write_doc` / `revise_doc`。编辑对象是库内 `design_doc_text`，保存走 POST + CSRF；成功后清空批准并写 `human_edit` 审计，`design_doc_path`、`iteration_no`、流程状态不变。非法状态 POST 返回 409，空正文或超过 262,144 字符返回 200 编辑态字段错误；仍按现有 Markdown + nh3 白名单渲染。不做协同编辑、版本锁或预览。
 
 ### 设计文档修订
 
@@ -1050,7 +1050,8 @@ git 和代理替换成测试双桩。至少覆盖：
 - 批准门禁：未批准时列表 / 详情无生成入口，直接 POST 被拒绝；批准后可入队；取消 / 重写 / 修订 / 人工编辑后批准失效。
 - 待确认解析、决定、版本失效，以及批准时的勾选与服务端复核。
 - 反馈写入与 `revise_doc` 同事务；修订成功 / 失败 / 重试的正文、批准、意见处理状态。
-- 人工编辑保存、空正文校验、active Job 拒绝、nh3 消毒与渲染回退。
+- 人工编辑保存、空正文 / 超长校验、active Job 与生成阶段 409、失败动作可用性矩阵、nh3 消毒与渲染回退；旧编辑地址 303 到详情卡内编辑态。
+- Issue 正文折叠标记：长正文有预览 / 全文容器与 `aria-expanded` 控件，无正文不渲染控件；无 JS 显示全文。
 - Issue Webhook / 手动同步不清 `doc_approved_at`。
 - 编写时改了其它文件：失败且不入库；`local_path` 有未提交修改不影响隔离任务。
 - Issue 在文档完成后更新时显示提示。
@@ -1163,8 +1164,7 @@ github_workflow/
     │   ├── repos.html
     │   ├── repo.html                    # GitHub 资料只读，表单填路径和文档目录
     │   ├── issues.html
-    │   ├── issue_detail.html            # 进行中每 5 秒刷新；审阅与批准卡
-    │   ├── design_edit.html             # 人工编辑库内 Markdown
+    │   ├── issue_detail.html            # 正文折叠；卡内编辑；每 5 秒刷新；审阅与批准卡
     │   ├── deliveries.html
     │   └── settings.html
     └── alembic/

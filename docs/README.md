@@ -16,6 +16,7 @@
 - Webhook 验签后入 Inbox 并 202；Worker 同步 GitHub 并跑流水线。
 - 编写文档 / 生成代码在 `WORKTREE_ROOT` 隔离 worktree 中执行，不污染登记的 `local_path`。
 - 「待生成」的设计文档经人工批准（`issue.doc_approved_at`）后才可生成代码；修订、重写、人工编辑都会使批准失效。
+- Issue 详情正文卡默认折叠（首行 + 省略 + 末两行），无 JS 时显示全文；生成代码前可在设计文档卡内人工编辑，保存会清空批准，进入生成阶段后返回 409 拒绝写库。
 - 迭代文档路径：`docs/v{n}-{issue}/design.md`；基石入口：`docs/README.md`；完整设计：`docs/architecture/design.md`。
 - Issue 详情可轮询任务日志尾部；Worker 心跳：`logs/worker-heartbeat.json`。
 - Worker 内置 OpenCode skills：`agent_skills/`（`documentation`、`ui-ux-pro-max`、`karpathy-guidelines`），部署挂到 `~/.config/opencode/skills`，不写进目标仓。

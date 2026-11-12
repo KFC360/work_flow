@@ -49,6 +49,12 @@
   <span class="min-w-0 break-words whitespace-pre-line">{{ issue.last_error }}</span>
 </div>
 {% endif %}
+{% if design_edit_error %}
+<div class="alert alert-error mb-4 flex items-start gap-2 text-sm" role="alert">
+  {{ icon('alert-triangle', 'h-5 w-5 shrink-0') }}
+  <span class="min-w-0 break-words whitespace-pre-line">{{ design_edit_error }}</span>
+</div>
+{% endif %}
 
 <section class="card card-border mb-4 bg-base-100 shadow-sm" aria-label="流程操作">
   <div class="card-body p-4">
@@ -132,18 +138,39 @@
 
 <div class="grid gap-4 xl:grid-cols-10 xl:items-start">
   <div class="min-w-0 space-y-4 xl:col-span-6">
-    <section class="card card-border bg-base-100 shadow-sm" aria-labelledby="issue-body-title">
+    <section class="card card-border bg-base-100 shadow-sm" aria-labelledby="issue-body-title" data-gw-issue-body>
       <div class="card-body p-5">
         <div class="mb-3 flex flex-wrap items-baseline justify-between gap-2">
           <h2 id="issue-body-title" class="card-title text-base">Issue 正文</h2>
-          <p class="text-xs text-base-content/60">
-            {{ ('@' ~ issue.author_login) if issue.author_login else '' }}{% if issue.author_login and issue.github_updated_at %} · {% endif %}{% if issue.github_updated_at %}更新于 {{ issue.github_updated_at | gw_time }} UTC{% endif %}
-          </p>
+          <div class="flex flex-wrap items-center gap-2">
+            <p class="text-xs text-base-content/60">
+              {{ ('@' ~ issue.author_login) if issue.author_login else '' }}{% if issue.author_login and issue.github_updated_at %} · {% endif %}{% if issue.github_updated_at %}更新于 {{ issue.github_updated_at | gw_time }} UTC{% endif %}
+            </p>
+            {% if issue_has_body %}
+            <button type="button" id="issue-body-toggle"
+                    class="btn btn-xs btn-ghost gap-1"
+                    aria-expanded="false"
+                    aria-controls="issue-body-preview issue-body-full"
+                    data-gw-body-toggle hidden>展开全文</button>
+            {% endif %}
+          </div>
         </div>
-        {% if issue_body_html is not none %}
-        <div class="md-content">{{ issue_body_html }}</div>
-        {% elif issue_has_body %}
-        <pre class="whitespace-pre-wrap break-words font-sans text-sm leading-6 text-base-content">{{ issue.body }}</pre>
+        {% if issue_has_body %}
+        <div id="issue-body-preview" class="gw-body-preview" data-gw-body-preview hidden aria-hidden="true"></div>
+        <div id="issue-body-full" data-gw-body-full hidden>
+          {% if issue_body_html is not none %}
+          <div class="md-content">{{ issue_body_html }}</div>
+          {% else %}
+          <pre class="whitespace-pre-wrap break-words font-sans text-sm leading-6 text-base-content">{{ issue.body }}</pre>
+          {% endif %}
+        </div>
+        <p id="issue-body-collapsed-note" class="sr-only" data-gw-body-note hidden></p>
+        <noscript>
+          <style>
+            [data-gw-body-full] { display: block !important; }
+            [data-gw-body-preview], [data-gw-body-toggle] { display: none !important; }
+          </style>
+        </noscript>
         {% else %}
         <p class="text-sm text-base-content/60">该 Issue 没有正文。</p>
         {% endif %}
@@ -151,20 +178,44 @@
     </section>
 
     {% if has_design_doc %}
-    <section class="card card-border bg-base-100 shadow-sm" aria-labelledby="design-doc-title">
+    <section id="design-doc" class="card card-border bg-base-100 shadow-sm" aria-labelledby="design-doc-title">
       <div class="card-body p-5">
         <div class="mb-3 flex flex-wrap items-center gap-2">
           <h2 id="design-doc-title" class="card-title text-base">设计文档</h2>
           <code class="break-all rounded bg-base-200 px-1.5 py-0.5 font-mono text-xs text-base-content">{{ issue.design_doc_path }}</code>
           {% if issue.iteration_no %}<span class="badge badge-sm badge-ghost font-mono">{{ issue.iteration_no | iteration_label }}</span>{% endif %}
-          {% if review_can_edit %}
-          <a class="btn btn-sm btn-ghost ml-auto gap-1.5" href="/issues/{{ issue.id }}/design/edit" aria-label="编辑库内设计文档">
+          {% if design_edit_mode %}
+          <span class="badge badge-sm badge-warning">编辑中</span>
+          <span class="text-xs text-base-content/60">保存后需重新批准</span>
+          {% elif design_edit_available %}
+          <a class="btn btn-sm btn-ghost ml-auto gap-1.5" href="/issues/{{ issue.id }}?edit=1#design-doc" aria-label="编辑库内设计文档">
             {{ icon('file-plus') }}<span>编辑文档</span>
           </a>
           {% endif %}
         </div>
 
-        {% if design_doc_html is not none %}
+        {% if design_edit_mode %}
+        <form method="post" action="/issues/{{ issue.id }}/design/edit">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+          <label class="mb-1 block text-sm font-medium text-base-content" for="design_doc_text">设计文档 Markdown</label>
+          <textarea id="design_doc_text" name="design_doc_text" rows="24"
+                    maxlength="{{ design_edit_max_chars }}"
+                    class="textarea w-full font-mono text-sm leading-6{% if design_edit_error %} textarea-error{% endif %}"
+                    aria-describedby="design-doc-text-help{% if design_edit_error %} design-doc-text-error{% endif %}"
+                    {% if design_edit_error %}aria-invalid="true" autofocus{% endif %}
+                    required>{{ design_edit_text }}</textarea>
+          <p id="design-doc-text-help" class="mt-1 text-xs text-base-content/60">保存后仍按现有 Markdown + HTML 白名单消毒渲染；不会提交到 Git。</p>
+          {% if design_edit_error %}
+          <p id="design-doc-text-error" class="mt-1 text-sm text-error">{{ design_edit_error }}</p>
+          {% endif %}
+          <div class="mt-4 flex flex-wrap items-center gap-2">
+            <button type="submit" class="btn btn-primary gap-1.5" data-gw-submit data-gw-busy-label="保存中…">
+              {{ icon('check') }}<span>保存</span>
+            </button>
+            <a class="btn btn-ghost" href="/issues/{{ issue.id }}#design-doc">取消</a>
+          </div>
+        </form>
+        {% elif design_doc_html is not none %}
         <div class="md-content max-h-[32rem] overflow-auto rounded-lg border border-base-300 p-3 pr-2"
              tabindex="0" role="region" aria-label="设计文档正文">
           {{ design_doc_html }}
@@ -411,6 +462,278 @@
 {% endblock %}
 
 {% block scripts %}
+{% if issue_has_body %}
+<script>
+  (function () {
+    var card = document.querySelector('[data-gw-issue-body]');
+    if (!card) return;
+    var full = card.querySelector('[data-gw-body-full]');
+    var preview = card.querySelector('[data-gw-body-preview]');
+    var toggle = card.querySelector('[data-gw-body-toggle]');
+    var note = card.querySelector('[data-gw-body-note]');
+    if (!full || !preview || !toggle) return;
+
+    var expanded = false;
+    var hasOverflow = false;
+    var total = 0;
+    var resizeTimer = null;
+    var lastWidth = card.clientWidth;
+
+    function restoreFull() {
+      hasOverflow = false;
+      expanded = false;
+      total = 0;
+      full.hidden = false;
+      preview.hidden = true;
+      preview.innerHTML = '';
+      toggle.hidden = true;
+      toggle.setAttribute('aria-expanded', 'false');
+      toggle.textContent = '展开全文';
+      if (note) note.hidden = true;
+    }
+
+    function contentRoot() {
+      return full.querySelector('.md-content') || full.querySelector('pre') || full;
+    }
+
+    function lineHeightFor(element) {
+      var style = window.getComputedStyle(element);
+      var fontSize = parseFloat(style.fontSize) || 14;
+      var lineHeight = style.lineHeight;
+      if (!lineHeight || lineHeight === 'normal') return fontSize * 1.7;
+      var value = parseFloat(lineHeight);
+      return isNaN(value) || value <= 0 ? fontSize * 1.7 : value;
+    }
+
+    function addTextNode(node, out) {
+      if (!node.nodeValue || !node.nodeValue.trim()) return;
+      var range = document.createRange();
+      range.selectNodeContents(node);
+      var rects = range.getClientRects();
+      for (var i = 0; i < rects.length; i += 1) {
+        var rect = rects[i];
+        if (rect.height <= 0 || rect.width <= 0) continue;
+        out.push({
+          top: rect.top + window.scrollY,
+          bottom: rect.bottom + window.scrollY,
+        });
+      }
+    }
+
+    function addBlockLines(element, count, lineHeight, out) {
+      var rect = element.getBoundingClientRect();
+      var top = rect.top + window.scrollY;
+      var lines = Math.max(1, count);
+      for (var i = 0; i < lines; i += 1) {
+        out.push({ top: top + i * lineHeight, bottom: top + (i + 1) * lineHeight });
+      }
+    }
+
+    function walk(node, lineHeight, out) {
+      if (node.nodeType === 3) {
+        addTextNode(node, out);
+        return;
+      }
+      if (node.nodeType !== 1) return;
+      var tag = node.tagName.toLowerCase();
+      if (tag === 'pre') {
+        addBlockLines(node, Math.ceil(node.scrollHeight / lineHeight), lineHeight, out);
+        return;
+      }
+      if (tag === 'table') {
+        var rows = node.querySelectorAll('tr');
+        for (var i = 0; i < rows.length; i += 1) {
+          var height = rows[i].getBoundingClientRect().height;
+          addBlockLines(rows[i], Math.ceil(height / lineHeight), lineHeight, out);
+        }
+        return;
+      }
+      if (tag === 'hr') {
+        addBlockLines(node, 1, lineHeight, out);
+        return;
+      }
+      if (tag === 'img' || tag === 'video' || tag === 'iframe' || tag === 'svg') {
+        var mediaHeight = node.getBoundingClientRect().height;
+        addBlockLines(node, Math.ceil(mediaHeight / lineHeight), lineHeight, out);
+        return;
+      }
+      if (tag === 'br') {
+        var br = node.getBoundingClientRect();
+        var brTop = br.top + window.scrollY;
+        out.push({ top: brTop, bottom: brTop + lineHeight });
+        return;
+      }
+      for (var child = node.firstChild; child; child = child.nextSibling) {
+        walk(child, lineHeight, out);
+      }
+    }
+
+    function measure(root, lineHeight) {
+      var raw = [];
+      walk(root, lineHeight, raw);
+      raw.sort(function (a, b) {
+        return a.top - b.top || a.bottom - b.bottom;
+      });
+      var merged = [];
+      for (var i = 0; i < raw.length; i += 1) {
+        var line = raw[i];
+        var last = merged[merged.length - 1];
+        if (last && Math.abs(last.top - line.top) <= 2) {
+          if (line.bottom > last.bottom) last.bottom = line.bottom;
+        } else {
+          merged.push({ top: line.top, bottom: line.bottom });
+        }
+      }
+      return merged;
+    }
+
+    function measureFull() {
+      var wasHidden = full.hidden;
+      var previousVisibility = full.style.visibility;
+      full.hidden = false;
+      full.style.visibility = 'hidden';
+      var root = contentRoot();
+      var lineHeight = lineHeightFor(root);
+      var lines;
+      try {
+        lines = measure(root, lineHeight);
+      } finally {
+        full.style.visibility = previousVisibility;
+        if (wasHidden) full.hidden = true;
+      }
+      return { root: root, lineHeight: lineHeight, lines: lines };
+    }
+
+    function removeFocus(root) {
+      var nodes = root.querySelectorAll('a, button, input, select, textarea, summary, [tabindex]');
+      for (var i = 0; i < nodes.length; i += 1) {
+        nodes[i].setAttribute('tabindex', '-1');
+      }
+    }
+
+    function buildPreview(root, lineHeight) {
+      preview.innerHTML = '';
+      preview.hidden = false;
+
+      var topSlot = document.createElement('div');
+      topSlot.className = 'gw-body-preview-slot';
+      topSlot.style.height = lineHeight + 'px';
+      var topClone = root.cloneNode(true);
+      topClone.classList.add('gw-body-preview-compact');
+      removeFocus(topClone);
+      topSlot.appendChild(topClone);
+
+      var ellipsis = document.createElement('div');
+      ellipsis.className = 'gw-body-preview-ellipsis';
+      ellipsis.setAttribute('aria-hidden', 'true');
+      ellipsis.textContent = '…';
+
+      var bottomSlot = document.createElement('div');
+      bottomSlot.className = 'gw-body-preview-slot';
+      bottomSlot.style.height = lineHeight * 2 + 'px';
+      var bottomClone = root.cloneNode(true);
+      bottomClone.classList.add('gw-body-preview-compact');
+      removeFocus(bottomClone);
+      bottomSlot.appendChild(bottomClone);
+
+      preview.appendChild(topSlot);
+      preview.appendChild(ellipsis);
+      preview.appendChild(bottomSlot);
+
+      var topLines = measure(topClone, lineHeightFor(topClone));
+      var topRect = topClone.getBoundingClientRect();
+      if (topLines.length) {
+        var topShift = Math.max(
+          0,
+          topLines[0].top - (topRect.top + window.scrollY)
+        );
+        topClone.style.transform = 'translateY(-' + topShift + 'px)';
+      }
+
+      var bottomLines = measure(bottomClone, lineHeightFor(bottomClone));
+      var bottomRect = bottomClone.getBoundingClientRect();
+      if (bottomLines.length >= 2) {
+        var bottomShift = Math.max(
+          0,
+          bottomLines[bottomLines.length - 2].top -
+            (bottomRect.top + window.scrollY)
+        );
+        bottomClone.style.transform = 'translateY(-' + bottomShift + 'px)';
+      }
+    }
+
+    function applyState(nextExpanded) {
+      if (!hasOverflow) {
+        restoreFull();
+        return;
+      }
+      expanded = nextExpanded;
+      full.hidden = !expanded;
+      preview.hidden = expanded;
+      toggle.hidden = false;
+      toggle.setAttribute('aria-expanded', expanded ? 'true' : 'false');
+      toggle.textContent = expanded ? '收起全文' : '展开全文';
+      if (note) {
+        note.hidden = expanded;
+        note.textContent =
+          '中间内容已省略。正文已折叠，共 ' +
+          total +
+          ' 行，使用标题行的展开全文按钮查看全部。';
+      }
+    }
+
+    function render() {
+      var measured = measureFull();
+      total = measured.lines.length;
+      if (total <= 3) {
+        restoreFull();
+        return;
+      }
+      hasOverflow = true;
+      buildPreview(measured.root, measured.lineHeight);
+      applyState(expanded);
+    }
+
+    function schedule(force) {
+      var width = card.clientWidth;
+      if (!force && width === lastWidth) return;
+      lastWidth = width;
+      if (resizeTimer) window.clearTimeout(resizeTimer);
+      resizeTimer = window.setTimeout(function () {
+        try {
+          render();
+        } catch (error) {
+          restoreFull();
+        }
+      }, 150);
+    }
+
+    try {
+      render();
+      lastWidth = card.clientWidth;
+      toggle.addEventListener('click', function () {
+        applyState(!expanded);
+      });
+      if (document.fonts && document.fonts.ready) {
+        document.fonts.ready.then(function () {
+          schedule(true);
+        }).catch(function () {});
+      }
+      window.addEventListener('resize', function () {
+        schedule(false);
+      });
+      if (window.ResizeObserver) {
+        var observer = new ResizeObserver(function () {
+          schedule(false);
+        });
+        observer.observe(card.querySelector('.card-body') || card);
+      }
+    } catch (error) {
+      restoreFull();
+    }
+  })();
+</script>
+{% endif %}
 {% if polling %}
 <script>
   (function () {

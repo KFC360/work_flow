@@ -172,6 +172,37 @@
     color: var(--color-base-content);
   }
 
+  /* Issue 正文折叠预览：槽位高度由脚本写入，超出内容裁切，不撑高卡片。 */
+  .gw-body-preview {
+    min-width: 0;
+  }
+
+  .gw-body-preview-slot {
+    position: relative;
+    overflow: hidden;
+  }
+
+  .gw-body-preview-slot > * {
+    margin-top: 0 !important;
+    margin-bottom: 0 !important;
+  }
+
+  .gw-body-preview-compact,
+  .gw-body-preview-compact * {
+    margin-top: 0 !important;
+    margin-bottom: 0 !important;
+  }
+
+  .gw-body-preview-ellipsis {
+    height: 1.25rem;
+    overflow: hidden;
+    color: color-mix(in oklch, var(--color-base-content) 55%, transparent);
+    font-size: 0.875rem;
+    line-height: 1.25rem;
+    letter-spacing: 0.15em;
+    user-select: none;
+  }
+
   /* daisyUI 5 组件自带焦点样式，原生链接与自定义可聚焦元素仍需统一可见焦点兜底。 */
   :where(a, button, input, select, textarea, summary, [tabindex]):focus-visible {
     outline: 2px solid var(--color-primary);

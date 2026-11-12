@@ -8,6 +8,7 @@ from urllib.parse import parse_qsl, quote, urlencode, urlsplit
 import httpx
 from fastapi import APIRouter, Depends, Form, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
+from loguru import logger
 from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
@@ -314,7 +315,6 @@ def _design_review_context(db: Session, issue, repo) -> dict:
     return {
         "review_visible": review_visible,
         "review_has_active": has_active,
-        "review_can_edit": can_edit,
         "review_can_approve": bool(can_edit and not issue.doc_approved_at),
         "review_path_available": bool(repo.local_path),
         "review_agent_available": bool(read_agent()),
@@ -380,28 +380,22 @@ def sync_repo_issues(
     return _redirect_with_flash(target, flash, issue_sync.summary_text(result))
 
 
-@router.get("/issues/{issue_id}", response_class=HTMLResponse)
-def issue_detail(
-    issue_id: int,
+def _render_issue_detail(
     request: Request,
-    db: Annotated[Session, Depends(get_db)],
-    user: Annotated[User, Depends(require_page_user)],
+    db: Session,
+    user: User,
+    issue,
+    repo,
+    company,
+    *,
+    edit_mode: bool = False,
+    edit_text: str | None = None,
+    edit_error: str | None = None,
+    status_code: int = 200,
 ):
-    issue = issue_crud.get(db, issue_id)
-    if issue is None or issue.deleted_at is not None:
-        return templates.TemplateResponse(
-            request, "404.html", _ctx(user, message="未找到 Issue"), status_code=404
-        )
-    repo = repository_crud.get(db, issue.repository_id)
-    assert repo is not None
-    company = company_crud.get(db, repo.company_id)
     expected_kind, _ = classify_labels(list(issue.label_names or []))
     label_mismatch = expected_kind != issue.kind and issue.kind != "pending"
-    stale_doc = bool(
-        issue.design_source_updated_at
-        and issue.github_updated_at
-        and issue.github_updated_at > issue.design_source_updated_at
-    )
+    stale_doc = _stale_design_doc(issue)
     latest = job_crud.latest_for_issue(db, issue.id)
     foundation_missing = False
     if repo.local_path:
@@ -425,6 +419,8 @@ def issue_detail(
         and issue.design_doc_text.strip()
     )
     review_context = _design_review_context(db, issue, repo)
+    design_edit_block = design_review.design_edit_block_reason(db, issue)
+    design_edit_available = bool(has_design_doc and design_edit_block is None)
     return templates.TemplateResponse(
         request,
         "issue_detail.html",
@@ -437,6 +433,13 @@ def issue_detail(
             issue_has_body=issue_has_body,
             design_doc_html=design_doc_html,
             has_design_doc=has_design_doc,
+            design_edit_available=design_edit_available,
+            design_edit_mode=edit_mode,
+            design_edit_text=(
+                edit_text if edit_text is not None else (issue.design_doc_text or "")
+            ),
+            design_edit_error=edit_error,
+            design_edit_max_chars=design_review.MAX_DESIGN_DOC_CHARS,
             actions=actions_for(db, issue, repo),
             kind_label=KIND_LABELS.get(issue.kind, issue.kind),
             status_label=STATUS_LABELS.get(issue.status, issue.status),
@@ -463,6 +466,42 @@ def issue_detail(
             ],
             **review_context,
         ),
+        status_code=status_code,
+    )
+
+
+@router.get("/issues/{issue_id}", response_class=HTMLResponse)
+def issue_detail(
+    issue_id: int,
+    request: Request,
+    db: Annotated[Session, Depends(get_db)],
+    user: Annotated[User, Depends(require_page_user)],
+    edit: str | None = None,
+):
+    issue = issue_crud.get(db, issue_id)
+    if issue is None or issue.deleted_at is not None:
+        return templates.TemplateResponse(
+            request, "404.html", _ctx(user, message="未找到 Issue"), status_code=404
+        )
+    repo = repository_crud.get(db, issue.repository_id)
+    assert repo is not None
+    company = company_crud.get(db, repo.company_id)
+    edit_requested = edit == "1"
+    if edit_requested:
+        block = design_review.design_edit_block_reason(db, issue)
+        if block:
+            return _design_redirect(issue.id, "error", block)
+        if not (issue.design_doc_path and (issue.design_doc_text or "").strip()):
+            return _design_redirect(issue.id, "error", "设计文档不存在或为空")
+    return _render_issue_detail(
+        request,
+        db,
+        user,
+        issue,
+        repo,
+        company,
+        edit_mode=edit_requested,
+        edit_text=(issue.design_doc_text or "") if edit_requested else None,
     )
 
 
@@ -861,31 +900,11 @@ def design_edit(
     issue, error = _design_issue_or_404(request, db, issue_id, user)
     if error is not None:
         return error
-    block = _design_block_reason(db, issue)
+    block = design_review.design_edit_block_reason(db, issue)
     if block:
         return _design_redirect(issue_id, "error", block)
-    repo = repository_crud.get(db, issue.repository_id)
-    assert repo is not None
-    company = company_crud.get(db, repo.company_id)
-    return templates.TemplateResponse(
-        request,
-        "design_edit.html",
-        _ctx(
-            user,
-            issue=issue,
-            repo=repo,
-            company=company,
-            doc_text=issue.design_doc_text or "",
-            field_error=None,
-            stale_doc=_stale_design_doc(issue),
-            breadcrumbs=[
-                ("公司", "/"),
-                (company.name if company else "公司", f"/companies/{repo.company_id}"),
-                (repo.github_full_name, f"/repos/{repo.id}"),
-                (f"#{issue.number} {issue.title}", f"/issues/{issue.id}"),
-                ("编辑设计文档", None),
-            ],
-        ),
+    return RedirectResponse(
+        f"/issues/{issue.id}?edit=1#design-doc", status_code=303
     )
 
 
@@ -900,37 +919,59 @@ def save_design_edit(
     issue, error = _design_issue_or_404(request, db, issue_id, user)
     if error is not None:
         return error
-    block = _design_block_reason(db, issue)
-    if block:
-        return _design_redirect(issue_id, "error", block)
     repo = repository_crud.get(db, issue.repository_id)
     assert repo is not None
     company = company_crud.get(db, repo.company_id)
-    if not (design_doc_text or "").strip():
-        return templates.TemplateResponse(
+
+    block = design_review.design_edit_block_reason(db, issue)
+    if block:
+        return _render_issue_detail(
             request,
-            "design_edit.html",
-            _ctx(
-                user,
-                issue=issue,
-                repo=repo,
-                company=company,
-                doc_text=design_doc_text,
-                field_error="设计文档不能为空",
-                stale_doc=_stale_design_doc(issue),
-                breadcrumbs=[
-                    ("公司", "/"),
-                    (company.name if company else "公司", f"/companies/{repo.company_id}"),
-                    (repo.github_full_name, f"/repos/{repo.id}"),
-                    (f"#{issue.number} {issue.title}", f"/issues/{issue.id}"),
-                    ("编辑设计文档", None),
-                ],
+            db,
+            user,
+            issue,
+            repo,
+            company,
+            edit_mode=False,
+            edit_error=block,
+            status_code=409,
+        )
+
+    if not (design_doc_text or "").strip():
+        return _render_issue_detail(
+            request,
+            db,
+            user,
+            issue,
+            repo,
+            company,
+            edit_mode=True,
+            edit_text=design_doc_text,
+            edit_error="设计文档不能为空",
+        )
+    if len(design_doc_text) > design_review.MAX_DESIGN_DOC_CHARS:
+        return _render_issue_detail(
+            request,
+            db,
+            user,
+            issue,
+            repo,
+            company,
+            edit_mode=True,
+            edit_text=design_doc_text,
+            edit_error=(
+                f"设计文档不能超过 {design_review.MAX_DESIGN_DOC_CHARS:,} 字符"
             ),
-            status_code=200,
         )
 
     issue.design_doc_text = design_doc_text
-    issue.doc_approved_at = None
+    if "doc_approved_at" in issue.__table__.columns:
+        issue.doc_approved_at = None
+    else:
+        logger.warning(
+            "issue.doc_approved_at column missing; skipped clearing approval "
+            f"for issue {issue.id}"
+        )
     feedback_crud.create(
         db,
         issue_id=issue.id,

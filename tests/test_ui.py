@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
+from html.parser import HTMLParser
 from pathlib import Path
 
 from fastapi.testclient import TestClient
@@ -227,6 +228,139 @@ def test_status_fragment_polling_contract(client: TestClient, db: Session) -> No
 
     resp = client.get("/issues/1/status-fragment", follow_redirects=False)
     assert resp.status_code in {200, 404}
+
+
+_VOID_TAGS = {
+    "area",
+    "base",
+    "br",
+    "col",
+    "embed",
+    "hr",
+    "img",
+    "input",
+    "link",
+    "meta",
+    "param",
+    "source",
+    "track",
+    "wbr",
+}
+
+
+class _RegionIds(HTMLParser):
+    """Collect HTML ids that appear inside a data-gw-region marker."""
+
+    def __init__(self, region: str):
+        super().__init__(convert_charrefs=True)
+        self.region = region
+        self.depth = 0
+        self.region_depth: int | None = None
+        self.ids: list[str] = []
+
+    def _record(self, attrs) -> None:
+        attrs = dict(attrs)
+        if attrs.get("data-gw-region") == self.region:
+            self.region_depth = self.depth
+        if self.region_depth is not None and attrs.get("id"):
+            self.ids.append(attrs["id"])
+
+    def handle_starttag(self, tag, attrs) -> None:
+        if tag in _VOID_TAGS:
+            self._record(attrs)
+            return
+        self.depth += 1
+        self._record(attrs)
+
+    def handle_startendtag(self, tag, attrs) -> None:
+        self._record(attrs)
+
+    def handle_endtag(self, tag) -> None:
+        if tag in _VOID_TAGS:
+            return
+        if self.region_depth is not None and self.depth == self.region_depth:
+            self.region_depth = None
+        self.depth = max(self.depth - 1, 0)
+
+
+def _region_ids(html: str, region: str) -> list[str]:
+    parser = _RegionIds(region)
+    parser.feed(html)
+    return parser.ids
+
+
+def test_issue_detail_two_column_layout_and_markdown(client: TestClient, db: Session) -> None:
+    _login(client, db)
+    _company, repo = _seed_company_repo(db)
+    issue = _seed_issue(db, repo, number=7, status="recorded", kind="feature", title="双栏与正文")
+    issue.body = (
+        "# 正文标题\n\n"
+        "第一段有 **粗体**、*斜体*、`行内代码` 和 [安全链接](https://example.com)。\n\n"
+        "- 列表一\n- 列表二\n\n"
+        "```python\nprint('<code>')\n```\n\n"
+        "| 列 | 值 |\n| --- | --- |\n| A | 1 |"
+    )
+    issue.design_doc_text = "# 设计源文"
+    db.commit()
+
+    resp = client.get(f"/issues/{issue.id}")
+    assert resp.status_code == 200
+    text = resp.text
+
+    assert 'data-gw-region="issue-side"' in text
+    ids = _region_ids(text, "issue-side")
+    assert "task-title" in ids
+    assert "log-title" in ids
+    assert "issue-live-status" in ids
+    assert "issue-log" in ids
+    assert "issue-log-jump" in ids
+    assert ids.index("task-title") < ids.index("log-title")
+    assert text.count('id="issue-log"') == 1
+
+    assert '<div class="gw-markdown">' in text
+    assert "<h3>正文标题</h3>" in text
+    assert "<strong>粗体</strong>" in text
+    assert "<em>斜体</em>" in text
+    assert "<code>行内代码</code>" in text
+    assert '<a href="https://example.com" rel="noopener noreferrer">安全链接</a>' in text
+    assert "<table>" in text and "<td>1</td>" in text
+    assert 'tabindex="0"><code>print(\'&lt;code&gt;\')' in text
+    assert "&lt;h3&gt;" not in text
+
+    body_card = text.split('id="issue-body-title"', 1)[1].split("</section>", 1)[0]
+    assert "<h1" not in body_card
+    assert "<h2" not in body_card
+
+    design_start = text.index('id="design-doc-title"')
+    assert "<pre" in text[design_start:]
+    assert "># 设计源文</pre>" in text
+
+
+def test_issue_detail_markdown_xss_and_empty_body(client: TestClient, db: Session) -> None:
+    _login(client, db)
+    _company, repo = _seed_company_repo(db)
+    issue = _seed_issue(db, repo, number=8, status="recorded", kind="feature", title="安全正文")
+    issue.body = (
+        "<p>安全段落</p>"
+        "<script>alert('xss-body')</script>"
+        '<img src=x onerror="alert(1)">'
+        '<a href="javascript:alert(1)">坏链接</a>'
+        '<iframe src="https://evil.example"></iframe>'
+    )
+    db.commit()
+
+    resp = client.get(f"/issues/{issue.id}")
+    text = resp.text
+    assert "安全段落" in text
+    assert "xss-body" not in text
+    assert "onerror" not in text
+    assert "javascript:" not in text
+    assert "evil.example" not in text
+
+    issue.body = "   "
+    db.commit()
+    resp = client.get(f"/issues/{issue.id}")
+    assert "该 Issue 没有正文。" in resp.text
 
 
 def test_issue_list_url_preserves_filters() -> None:

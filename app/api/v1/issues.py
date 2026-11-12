@@ -27,6 +27,7 @@ from app.services.issues import (
     classify_labels,
 )
 from app.services.job_logs import read_job_log_tail, safe_job_log_path
+from app.services.markdown_render import render_issue_body
 from app.services.worker_heartbeat import HeartbeatView, read_heartbeat
 
 router = APIRouter(tags=["issues"])
@@ -214,6 +215,8 @@ def issue_detail(
     heartbeat = read_heartbeat()
     log_text, log_warning = _log_context(latest)
     worker_text = _worker_text(issue, heartbeat)
+    issue_body_html = render_issue_body(issue.body)
+    issue_has_body = bool(issue.body and issue.body.strip())
     return templates.TemplateResponse(
         request,
         "issue_detail.html",
@@ -222,6 +225,8 @@ def issue_detail(
             issue=issue,
             repo=repo,
             company=company,
+            issue_body_html=issue_body_html,
+            issue_has_body=issue_has_body,
             actions=actions_for(db, issue, repo),
             kind_label=KIND_LABELS.get(issue.kind, issue.kind),
             status_label=STATUS_LABELS.get(issue.status, issue.status),

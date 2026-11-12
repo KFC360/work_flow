@@ -94,8 +94,8 @@
   </dl>
 </section>
 
-<div class="grid gap-4 xl:grid-cols-3">
-  <div class="space-y-4 xl:col-span-2">
+<div class="grid gap-4 xl:grid-cols-3 xl:items-start">
+  <div class="min-w-0 space-y-4 xl:col-span-2">
     <section class="gw-card p-5" aria-labelledby="issue-body-title">
       <div class="mb-3 flex flex-wrap items-baseline justify-between gap-2">
         <h2 id="issue-body-title" class="text-base font-semibold text-slate-900">Issue 正文</h2>
@@ -103,7 +103,9 @@
           {{ ('@' ~ issue.author_login) if issue.author_login else '' }}{% if issue.author_login and issue.github_updated_at %} · {% endif %}{% if issue.github_updated_at %}更新于 {{ issue.github_updated_at | gw_time }} UTC{% endif %}
         </p>
       </div>
-      {% if issue.body %}
+      {% if issue_body_html is not none %}
+      <div class="gw-markdown">{{ issue_body_html }}</div>
+      {% elif issue_has_body %}
       <pre class="whitespace-pre-wrap break-words font-sans text-sm leading-6 text-slate-800">{{ issue.body }}</pre>
       {% else %}
       <p class="text-sm text-slate-500">该 Issue 没有正文。</p>
@@ -122,7 +124,7 @@
     {% endif %}
   </div>
 
-  <div class="space-y-4 xl:col-span-1">
+  <div class="min-w-0 space-y-4 xl:col-span-1" data-gw-region="issue-side">
     <section class="gw-card p-5" aria-labelledby="task-title">
       <h2 id="task-title" class="mb-4 flex items-center gap-2 text-base font-semibold text-slate-900">
         {{ icon('terminal', 'h-5 w-5 text-slate-500') }}<span>任务与 Worker</span>
@@ -156,39 +158,39 @@
       <p class="mt-3 text-xs text-slate-500">最近心跳：<span class="font-mono-data">{{ worker_updated_at | gw_time }} UTC</span></p>
       {% endif %}
     </section>
+
+    <section class="gw-card p-5" aria-labelledby="log-title">
+      <div class="mb-3 flex flex-wrap items-center justify-between gap-2">
+        <div class="flex flex-wrap items-center gap-2">
+          <h2 id="log-title" class="flex items-center gap-2 text-base font-semibold text-slate-900">
+            {{ icon('terminal', 'h-5 w-5 text-slate-500') }}<span>最新任务日志</span>
+          </h2>
+          {% if latest_job %}
+          <span class="font-mono-data text-xs text-slate-500">job #{{ latest_job.id }}</span>
+          <span class="text-xs text-slate-600">{{ action_label(latest_job.action) }}</span>
+          {{ job_badge(latest_job.status) }}
+          {% endif %}
+        </div>
+        {% if polling %}
+        <span id="issue-live-indicator" class="flex items-center gap-1.5 text-xs text-slate-500">
+          <span class="loading loading-spinner loading-xs" aria-hidden="true"></span>
+          <span>自动刷新中</span>
+        </span>
+        {% endif %}
+      </div>
+      <div class="relative">
+        <pre
+          id="issue-log"
+          tabindex="0"
+          aria-label="任务日志"
+          class="max-h-96 overflow-auto whitespace-pre-wrap break-words rounded-xl bg-slate-950 p-4 font-mono text-xs leading-relaxed text-slate-100"
+        >{{ log_text or '（暂无日志）' }}</pre>
+        <button id="issue-log-jump" type="button" class="btn btn-primary btn-sm absolute bottom-3 right-3 shadow-lg" hidden>有新日志，回到底部</button>
+      </div>
+      <p id="issue-log-updated" class="sr-only">日志已更新</p>
+    </section>
   </div>
 </div>
-
-<section class="gw-card mt-4 p-5" aria-labelledby="log-title">
-  <div class="mb-3 flex flex-wrap items-center justify-between gap-2">
-    <div class="flex flex-wrap items-center gap-2">
-      <h2 id="log-title" class="flex items-center gap-2 text-base font-semibold text-slate-900">
-        {{ icon('terminal', 'h-5 w-5 text-slate-500') }}<span>最新任务日志</span>
-      </h2>
-      {% if latest_job %}
-      <span class="font-mono-data text-xs text-slate-500">job #{{ latest_job.id }}</span>
-      <span class="text-xs text-slate-600">{{ action_label(latest_job.action) }}</span>
-      {{ job_badge(latest_job.status) }}
-      {% endif %}
-    </div>
-    {% if polling %}
-    <span id="issue-live-indicator" class="flex items-center gap-1.5 text-xs text-slate-500">
-      <span class="loading loading-spinner loading-xs" aria-hidden="true"></span>
-      <span>自动刷新中</span>
-    </span>
-    {% endif %}
-  </div>
-  <div class="relative">
-    <pre
-      id="issue-log"
-      tabindex="0"
-      aria-label="任务日志"
-      class="max-h-96 overflow-auto whitespace-pre-wrap break-words rounded-xl bg-slate-950 p-4 font-mono text-xs leading-relaxed text-slate-100"
-    >{{ log_text or '（暂无日志）' }}</pre>
-    <button id="issue-log-jump" type="button" class="btn btn-primary btn-sm absolute bottom-3 right-3 shadow-lg" hidden>有新日志，回到底部</button>
-  </div>
-  <p id="issue-log-updated" class="sr-only">日志已更新</p>
-</section>
 {% endblock %}
 
 {% block scripts %}

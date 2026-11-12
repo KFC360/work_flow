@@ -90,12 +90,37 @@ def _mail_config_errors(config: MailConfig) -> list[str]:
     return list(validate_mail_config(config).values())
 
 
+_NETEASE_SMTP_SUFFIXES = (".163.com", ".126.com", ".yeah.net", ".188.com")
+
+
+def _is_netease_host(host: str) -> bool:
+    host = (host or "").strip().lower()
+    return any(host.endswith(suffix) for suffix in _NETEASE_SMTP_SUFFIXES)
+
+
 def _mail_warnings(config: MailConfig) -> list[str]:
     warnings: list[str] = []
     if config.enabled and not password_configured():
         warnings.append("SMTP 密码未配置，保存后仍无法发信。")
     if config.security == "none":
         warnings.append("不加密连接会明文传输邮件内容与认证信息。")
+    host = (config.smtp_host or "").strip().lower()
+    if host and _is_netease_host(host):
+        if config.security != "ssl":
+            warnings.append(
+                "网易邮箱（163/126 等）请使用 SSL/TLS，端口 465（或 994）；"
+                "其 587 也是隐式 SSL，选 STARTTLS 会断连。"
+            )
+        elif config.smtp_port not in (465, 994, 587):
+            warnings.append("网易邮箱常用 SMTP 端口为 465 或 994。")
+        username = (config.username or "").strip().lower()
+        from_address = (config.from_address or "").strip().lower()
+        if not username:
+            warnings.append("网易邮箱必须填写 SMTP 用户名（完整邮箱地址）。")
+        elif from_address and username != from_address:
+            warnings.append(
+                "网易邮箱要求发件人地址与 SMTP 用户名一致（均为完整邮箱）。"
+            )
     return warnings
 
 

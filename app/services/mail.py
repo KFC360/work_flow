@@ -79,6 +79,51 @@ class MailSendError(MailError):
     pass
 
 
+_NETEASE_SMTP_SUFFIXES = (".163.com", ".126.com", ".yeah.net", ".188.com")
+
+
+def _is_netease_host(host: str) -> bool:
+    host = (host or "").strip().lower()
+    return any(host.endswith(suffix) for suffix in _NETEASE_SMTP_SUFFIXES)
+
+
+def _safe_smtp_error_text(raw: object) -> str:
+    """Decode SMTP server text for UI/logs without leaking secrets."""
+    if raw is None:
+        return ""
+    if isinstance(raw, bytes):
+        text = raw.decode("utf-8", errors="replace")
+    else:
+        text = str(raw)
+    text = " ".join(text.split())
+    if len(text) > 160:
+        text = text[:157] + "..."
+    return text
+
+
+def _smtp_failure_hint(exc: Exception, config) -> str:
+    host = (config.smtp_host or "").lower()
+    if isinstance(exc, smtplib.SMTPServerDisconnected):
+        if _is_netease_host(host):
+            return "；网易邮箱请用 465 + SSL（其 587 也是隐式 SSL，不是 STARTTLS）"
+        return "；请核对端口与加密：465→SSL，587→STARTTLS"
+    if isinstance(exc, smtplib.SMTPSenderRefused):
+        if _is_netease_host(host):
+            return (
+                "；网易要求发件人地址与 SMTP 用户名同为完整邮箱，"
+                "且密码为网页开通 SMTP 后的授权码"
+            )
+        if config.username and config.from_address.lower() != config.username.lower():
+            return "；发件人地址需与 SMTP 登录用户一致"
+        if not config.username:
+            return "；请填写 SMTP 用户名并确认发件人地址合法"
+    if isinstance(exc, smtplib.SMTPAuthenticationError):
+        if _is_netease_host(host):
+            return "；请确认用户名为完整邮箱，密码为授权码而非登录密码"
+        return "；请核对 SMTP 用户名与密码"
+    return ""
+
+
 def get_smtp_password() -> str:
     return os.getenv("SMTP_PASSWORD", "").strip()
 
@@ -247,19 +292,26 @@ def send_mail(
                 to_addrs=recipients,
             )
     except (smtplib.SMTPException, OSError) as exc:
+        smtp_code = getattr(exc, "smtp_code", None)
+        smtp_error = _safe_smtp_error_text(getattr(exc, "smtp_error", None))
         logger.warning(
-            "mail send failed: {} code={} endpoint={} auth_user={}",
+            "mail send failed: {} code={} detail={} endpoint={} auth_user={} from={}",
             type(exc).__name__,
-            getattr(exc, "smtp_code", "-"),
+            smtp_code if smtp_code is not None else "-",
+            smtp_error or "-",
             endpoint,
             bool(config.username),
+            config.from_address,
         )
-        hint = ""
-        if isinstance(exc, smtplib.SMTPServerDisconnected):
-            hint = "；请核对端口与加密：465→SSL，587→STARTTLS"
+        hint = _smtp_failure_hint(exc, config)
+        detail = ""
+        if smtp_code is not None:
+            detail = f" {smtp_code}"
+            if smtp_error:
+                detail = f"{detail} {smtp_error}"
         raise MailSendError(
             "smtp_error",
-            f"发送失败：{type(exc).__name__}（{endpoint}{hint}；详见日志）",
+            f"发送失败：{type(exc).__name__}（{endpoint}{detail}{hint}；详见日志）",
         ) from exc
 
     logger.info("mail sent to {} recipient(s) via {}", len(recipients), endpoint)

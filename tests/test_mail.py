@@ -207,7 +207,40 @@ def test_smtp_exception_is_wrapped_without_password(monkeypatch) -> None:
     assert exc_info.value.code == "smtp_error"
     assert "SMTPAuthenticationError" in str(exc_info.value)
     assert "smtp.example.com:587/starttls" in str(exc_info.value)
+    assert "535" in str(exc_info.value)
     assert "smtp-secret" not in str(exc_info.value)
+
+
+def test_smtp_sender_refused_netease_hint(monkeypatch) -> None:
+    _patch(
+        monkeypatch,
+        _mail(
+            smtp_host="smtp.163.com",
+            security="ssl",
+            smtp_port=465,
+            username="other@163.com",
+            from_address="notify@163.com",
+        ),
+        password="smtp-secret",
+    )
+
+    class RefusingSSL(FakeSMTP):
+        def send_message(self, message, from_addr=None, to_addrs=None):
+            raise smtplib.SMTPSenderRefused(
+                553, b"Mail from must equal authorized user", from_addr
+            )
+
+    monkeypatch.setattr("app.services.mail.smtplib.SMTP_SSL", RefusingSSL)
+
+    with pytest.raises(MailSendError) as exc_info:
+        send_mail("a@example.com", "Subject", "<p>Hello</p>")
+
+    text = str(exc_info.value)
+    assert "SMTPSenderRefused" in text
+    assert "553" in text
+    assert "authorized user" in text
+    assert "发件人地址与 SMTP 用户名" in text
+    assert "smtp-secret" not in text
 
 
 def test_smtp_disconnected_includes_port_hint(monkeypatch) -> None:
@@ -230,6 +263,32 @@ def test_smtp_disconnected_includes_port_hint(monkeypatch) -> None:
     assert "SMTPServerDisconnected" in str(exc_info.value)
     assert "465→SSL" in str(exc_info.value)
     assert "smtp-secret" not in str(exc_info.value)
+
+
+def test_smtp_disconnected_netease_hint(monkeypatch) -> None:
+    _patch(
+        monkeypatch,
+        _mail(
+            smtp_host="smtp.163.com",
+            security="starttls",
+            smtp_port=587,
+            username="u@163.com",
+            from_address="u@163.com",
+        ),
+        password="smtp-secret",
+    )
+
+    class DroppingSMTP(FakeSMTP):
+        def ehlo(self):
+            raise smtplib.SMTPServerDisconnected("Connection unexpectedly closed")
+
+    monkeypatch.setattr("app.services.mail.smtplib.SMTP", DroppingSMTP)
+
+    with pytest.raises(MailSendError) as exc_info:
+        send_mail("a@example.com", "Subject", "<p>Hello</p>")
+
+    assert "网易邮箱" in str(exc_info.value)
+    assert "465 + SSL" in str(exc_info.value)
 
 
 def test_sanitize_failure_never_sends(monkeypatch) -> None:

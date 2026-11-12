@@ -10,6 +10,17 @@ from app.crud import issue as issue_crud
 from app.crud import job as job_crud
 from app.crud import repository as repository_crud
 from app.services.github_api import GitHubAPIError, GitHubClient
+from app.services.pr_sync import apply_pull_request_event
+
+SUPPORTED_ISSUE_ACTIONS = {
+    "opened",
+    "edited",
+    "labeled",
+    "unlabeled",
+    "closed",
+    "reopened",
+    "deleted",
+}
 
 
 def _text(value: Any) -> str | None:
@@ -123,8 +134,11 @@ def sync_owner_and_repo(db: Session, client: GitHubClient, github_repo_id: int):
     return company, repo
 
 
-def apply_issue_action(db: Session, repo_id: int, payload: dict[str, Any]) -> None:
+def apply_issue_action(db: Session, repo_id: int, payload: dict[str, Any]) -> bool:
+    """Apply one issues payload; return False when the action is unsupported."""
     action = payload.get("action") or ""
+    if action not in SUPPORTED_ISSUE_ACTIONS:
+        return False
     issue = payload.get("issue") or {}
     labels = [lbl.get("name") for lbl in (issue.get("labels") or []) if isinstance(lbl, dict)]
     label_names = [n for n in labels if isinstance(n, str)]
@@ -143,14 +157,31 @@ def apply_issue_action(db: Session, repo_id: int, payload: dict[str, Any]) -> No
         github_updated_at=_parse_dt(issue.get("updated_at")),
         action=action,
     )
-    if action == "closed":
+    if action == "closed" and row.github_state == "closed" and row.deleted_at is None:
+        # A stale closed event after a newer reopened must not cancel work.
         job_crud.cancel_queued_for_issue(db, row.id)
+    return True
 
 
-def process_delivery_payload(db: Session, client: GitHubClient, payload: dict[str, Any]) -> None:
+def process_issue_delivery(
+    db: Session, client: GitHubClient, payload: dict[str, Any]
+) -> bool:
+    """Sync company/repo, then apply an Issue action. False means ignored."""
     repo_meta = payload.get("repository") or {}
     github_repo_id = repo_meta.get("id")
     if github_repo_id is None:
         raise GitHubAPIError("missing repository.id", status_code=400)
     _, repo = sync_owner_and_repo(db, client, int(github_repo_id))
-    apply_issue_action(db, repo.id, payload)
+    return apply_issue_action(db, repo.id, payload)
+
+
+def process_pull_request_delivery(
+    db: Session, payload: dict[str, Any]
+) -> tuple[bool, str | None]:
+    """Apply a PR event using only local repository/Issue data (never GitHub API)."""
+    return apply_pull_request_event(db, payload)
+
+
+def process_delivery_payload(db: Session, client: GitHubClient, payload: dict[str, Any]) -> bool:
+    """Backwards-compatible issues-entry point used by older callers."""
+    return process_issue_delivery(db, client, payload)

@@ -16,7 +16,7 @@ from app.crud import repository as repository_crud
 from app.database.connect import get_db
 from app.dependencies.auth import require_csrf, require_fragment_user, require_page_user
 from app.models.user import User
-from app.services.actions import KIND_LABELS, STATUS_LABELS, actions_for
+from app.services.actions import KIND_LABELS, STATUS_LABELS, actions_for, display_status_label
 from app.services.config_agent import read_agent
 from app.services.foundation import foundation_relpath, read_foundation_from_origin
 from app.services.issues import (
@@ -49,6 +49,7 @@ def _issue_list_url(
     status: str | None,
     github_state: str | None,
     page: int,
+    pr_state: str | None = None,
 ) -> str:
     params: list[tuple[str, str]] = []
     if kind:
@@ -57,6 +58,8 @@ def _issue_list_url(
         params.append(("status", status))
     if github_state:
         params.append(("github_state", github_state))
+    if pr_state:
+        params.append(("pr_state", pr_state))
     if page > 1:
         params.append(("page", str(page)))
     query = urlencode(params)
@@ -93,6 +96,7 @@ def issue_list(
     kind: str | None = None,
     status: str | None = None,
     github_state: str | None = "open",
+    pr_state: str | None = None,
     page: int = 1,
 ):
     repo = repository_crud.get(db, repo_id)
@@ -103,12 +107,14 @@ def issue_list(
     company = company_crud.get(db, repo.company_id)
     page = max(page, 1)
     gh = github_state if github_state != "" else None
+    pr_filter = pr_state if pr_state not in ("", "all") else None
     issues = issue_crud.list_for_repo(
         db,
         repo_id,
         kind=kind or None,
         status=status or None,
         github_state=gh,
+        pr_state=pr_filter,
         offset=(page - 1) * PAGE_SIZE,
         limit=PAGE_SIZE,
     )
@@ -118,21 +124,24 @@ def issue_list(
         kind=kind or None,
         status=status or None,
         github_state=gh,
+        pr_state=pr_filter,
     )
     rows = [
         {
             "issue": i,
             "kind_label": KIND_LABELS.get(i.kind, i.kind),
-            "status_label": STATUS_LABELS.get(i.status, i.status),
+            "status_label": display_status_label(i),
             "actions": actions_for(db, i, repo),
         }
         for i in issues
     ]
     status_options = list(STATUS_LABELS.items())
-    status_options.append((issue_crud.UNFINISHED_STATUS, "未结束（未建 PR）"))
+    status_options.append((issue_crud.UNFINISHED_STATUS, "未结束"))
     if status and status not in {value for value, _ in status_options}:
         status_options.append((status, status))
-    has_filters = bool(kind or status) or (github_state not in (None, "", "open"))
+    has_filters = bool(kind or status or pr_filter) or (
+        github_state not in (None, "", "open")
+    )
     return templates.TemplateResponse(
         request,
         "issues.html",
@@ -147,6 +156,7 @@ def issue_list(
             status_options=status_options,
             has_filters=has_filters,
             github_state=github_state if github_state is not None else "open",
+            pr_state=pr_filter or "",
             page=page,
             pagination={
                 "page": page,
@@ -157,6 +167,7 @@ def issue_list(
                     kind=kind,
                     status=status,
                     github_state=github_state,
+                    pr_state=pr_filter,
                     page=page - 1,
                 ),
                 "next_url": _issue_list_url(
@@ -164,6 +175,7 @@ def issue_list(
                     kind=kind,
                     status=status,
                     github_state=github_state,
+                    pr_state=pr_filter,
                     page=page + 1,
                 ),
             },

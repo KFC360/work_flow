@@ -20,6 +20,22 @@
   'support_open': ('待处理', 'neutral', 'inbox'),
 } %}
 
+{% set PR_STATE_META = {
+  'open': ('已建PR', 'info', 'pr'),
+  'merged': ('已合并', 'success', 'check-circle'),
+  'closed': ('已关闭（未合并）', 'neutral', 'lock'),
+  'unsynced': ('已建PR（状态未同步）', 'warning', 'help-circle'),
+  'none': ('无 PR', 'neutral', 'minus'),
+} %}
+
+{% set PR_DETAIL_STATE_META = {
+  'open': ('开放', 'info', 'pr'),
+  'merged': ('已合并', 'success', 'check-circle'),
+  'closed': ('已关闭（未合并）', 'neutral', 'lock'),
+  'unsynced': ('状态未同步', 'warning', 'help-circle'),
+  'none': ('无 PR', 'neutral', 'minus'),
+} %}
+
 {% set KIND_META = {
   'feature': ('功能迭代', 'info', 'code'),
   'support': ('人工介入', 'warning', 'life-buoy'),
@@ -75,6 +91,35 @@
 {% macro issue_status_badge(status, label=None) -%}
 {% set meta = ISSUE_STATUS_META.get(status, (label or status, 'neutral', 'help-circle')) %}
 {{ badge(meta[1], meta[0], meta[2]) }}
+{%- endmacro %}
+
+{% macro list_status_badge(issue) -%}
+{% if issue.status == 'pr_opened' %}
+  {% if issue.pr_state in ('open', 'merged', 'closed') %}
+    {% set meta = PR_STATE_META[issue.pr_state] %}
+    {{ badge(meta[1], meta[0], meta[2]) }}
+  {% elif issue.pr_number is not none %}
+    {% set meta = PR_STATE_META['unsynced'] %}
+    {{ badge(meta[1], meta[0], meta[2]) }}
+  {% else %}
+    {{ issue_status_badge(issue.status) }}
+  {% endif %}
+{% else %}
+  {{ issue_status_badge(issue.status) }}
+{% endif %}
+{%- endmacro %}
+
+{% macro pr_state_badge(pr_state, pr_number=None) -%}
+{% if pr_state in ('open', 'merged', 'closed') %}
+  {% set meta = PR_DETAIL_STATE_META[pr_state] %}
+  {{ badge(meta[1], meta[0], meta[2]) }}
+{% elif pr_number is not none %}
+  {% set meta = PR_DETAIL_STATE_META['unsynced'] %}
+  {{ badge(meta[1], meta[0], meta[2]) }}
+{% else %}
+  {% set meta = PR_DETAIL_STATE_META['none'] %}
+  {{ badge(meta[1], meta[0], meta[2]) }}
+{% endif %}
 {%- endmacro %}
 
 {% macro kind_badge(kind) -%}

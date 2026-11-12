@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% from "macros/ui.html" import page_header, kind_badge, issue_status_badge, github_state_badge, job_badge, phase_label, worker_badge, issue_actions, live_status, action_label %}
+{% from "macros/ui.html" import page_header, kind_badge, issue_status_badge, pr_state_badge, github_state_badge, job_badge, phase_label, worker_badge, issue_actions, live_status, action_label %}
 {% from "macros/icons.html" import icon %}
 {% block title %}#{{ issue.number }} {{ issue.title }}{% endblock %}
 
@@ -82,12 +82,19 @@
       <dd class="mt-1 break-all font-mono-data text-xs text-slate-700">{{ issue.branch_name or '—' }}</dd>
     </div>
     <div>
+      <dt class="text-xs text-slate-500">PR 状态</dt>
+      <dd class="mt-1">{{ pr_state_badge(issue.pr_state, issue.pr_number) }}</dd>
+    </div>
+    <div>
       <dt class="text-xs text-slate-500">Pull Request</dt>
       <dd class="mt-1">
         {% if issue.pr_url %}
         <a class="link link-hover text-sky-700" href="{{ issue.pr_url }}" target="_blank" rel="noopener">查看 PR</a>
         {% else %}
         <span class="text-slate-500">—</span>
+        {% endif %}
+        {% if issue.pr_state == 'merged' and issue.pr_merged_at %}
+        <span class="mt-1 block text-xs text-slate-600">合并于 <span class="font-mono-data">{{ issue.pr_merged_at | gw_time }} UTC</span></span>
         {% endif %}
       </dd>
     </div>

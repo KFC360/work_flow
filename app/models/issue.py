@@ -6,11 +6,13 @@ from sqlalchemy import (
     BigInteger,
     DateTime,
     ForeignKey,
+    Index,
     Integer,
     String,
     Text,
     UniqueConstraint,
     func,
+    text,
 )
 from sqlalchemy.dialects.postgresql import ARRAY
 from sqlalchemy.orm import Mapped, mapped_column
@@ -24,6 +26,14 @@ class Issue(Base):
     __table_args__ = (
         UniqueConstraint("repository_id", "number", name="uq_issue_repo_number"),
         UniqueConstraint("repository_id", "iteration_no", name="uq_issue_repo_iteration"),
+        Index(
+            "uq_issue_repo_pr_number",
+            "repository_id",
+            "pr_number",
+            unique=True,
+            postgresql_where=text("pr_number IS NOT NULL"),
+        ),
+        Index("ix_issue_repo_pr_state", "repository_id", "pr_state"),
         {"schema": DB_SCHEMA},
     )
 
@@ -57,9 +67,19 @@ class Issue(Base):
     )
     pr_number: Mapped[int | None] = mapped_column(Integer, nullable=True)
     pr_url: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    pr_state: Mapped[str] = mapped_column(
+        String(16), nullable=False, default="none", server_default="none"
+    )
+    pr_state_updated_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    pr_merged_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     failed_action: Mapped[str | None] = mapped_column(String(64), nullable=True)
     last_error: Mapped[str | None] = mapped_column(Text, nullable=True)
     github_updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    github_state_updated_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()

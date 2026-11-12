@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
-from sqlalchemy import func, select
+from sqlalchemy import and_, func, or_, select
 from sqlalchemy.orm import Session
 
 from app.models.company import Company
@@ -77,6 +77,13 @@ def repo_count(db: Session, company_id: int) -> int:
 
 
 def open_issue_count(db: Session, company_id: int) -> int:
+    """Count unfinished Issues using the same rules as the repo summary."""
+    feature_unfinished = and_(
+        Issue.kind == "feature",
+        Issue.pr_state.notin_(["merged", "closed"]),
+        ~and_(Issue.status == "pr_opened", Issue.pr_number.is_(None)),
+    )
+    support_open = and_(Issue.kind == "support", Issue.status == "support_open")
     stmt = (
         select(func.count())
         .select_from(Issue)
@@ -85,7 +92,7 @@ def open_issue_count(db: Session, company_id: int) -> int:
             Repository.company_id == company_id,
             Issue.github_state == "open",
             Issue.deleted_at.is_(None),
-            Issue.status.notin_(["pr_opened"]),
+            or_(feature_unfinished, support_open),
         )
     )
     return int(db.scalar(stmt) or 0)

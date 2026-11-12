@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% from "macros/ui.html" import page_header, kind_badge, issue_status_badge, empty_state, pagination as pagination_bar, issue_actions %}
+{% from "macros/ui.html" import page_header, kind_badge, list_status_badge, empty_state, pagination as pagination_bar, issue_actions %}
 {% from "macros/icons.html" import icon %}
 {% block title %}Issue · {{ repo.github_full_name }}{% endblock %}
 
@@ -28,6 +28,16 @@
         {% for value, label in status_options %}
         <option value="{{ value }}" {% if status == value %}selected{% endif %}>{{ label }}</option>
         {% endfor %}
+      </select>
+    </div>
+    <div class="min-w-0">
+      <label class="mb-1 block text-xs font-medium text-slate-600" for="pr_state">PR 状态</label>
+      <select id="pr_state" name="pr_state" class="select select-bordered select-sm w-full min-w-[10rem]">
+        <option value="" {% if not pr_state %}selected{% endif %}>全部</option>
+        <option value="none" {% if pr_state == 'none' %}selected{% endif %}>无 PR 或状态未同步</option>
+        <option value="open" {% if pr_state == 'open' %}selected{% endif %}>开放</option>
+        <option value="merged" {% if pr_state == 'merged' %}selected{% endif %}>已合并</option>
+        <option value="closed" {% if pr_state == 'closed' %}selected{% endif %}>已关闭（未合并）</option>
       </select>
     </div>
     <div class="min-w-0">
@@ -85,7 +95,7 @@
             {% endif %}
           </td>
           <td class="align-top">{{ kind_badge(item.issue.kind) }}</td>
-          <td class="align-top">{{ issue_status_badge(item.issue.status, item.status_label) }}</td>
+          <td class="align-top">{{ list_status_badge(item.issue) }}</td>
           <td class="align-top whitespace-nowrap font-mono-data text-xs text-slate-600"{% if item.issue.github_updated_at or item.issue.updated_at %} title="{{ (item.issue.github_updated_at or item.issue.updated_at) | gw_iso }}"{% endif %}>{{ (item.issue.github_updated_at or item.issue.updated_at) | gw_time }} UTC</td>
           <td class="align-top">
             {{ issue_actions(item.actions, csrf_token) }}

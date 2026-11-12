@@ -17,7 +17,7 @@
 - 编写文档 / 生成代码在 `WORKTREE_ROOT` 隔离 worktree 中执行，不污染登记的 `local_path`。
 - 迭代文档路径：`docs/v{n}-{issue}/design.md`；基石入口：`docs/README.md`；完整设计：`docs/architecture/design.md`。
 - Issue 详情可轮询任务日志尾部；Worker 心跳：`logs/worker-heartbeat.json`。
-- Worker 内置 OpenCode skills：`agent_skills/`（`documentation`、`ui-ux-pro-max`），部署挂到 `~/.config/opencode/skills`，不写进目标仓。
+- Worker 内置 OpenCode skills：`agent_skills/`（`documentation`、`ui-ux-pro-max`、`karpathy-guidelines`），部署挂到 `~/.config/opencode/skills`，不写进目标仓。
 
 ## 文档索引
 

@@ -44,6 +44,7 @@ def test_codegen_prompt_mentions_ui_skill() -> None:
         design_doc_text="x",
         foundation=None,
     )
+    assert "@karpathy-guidelines" in prompt
     assert "@ui-ux-pro-max" in prompt
     assert "Web Search" in prompt
 

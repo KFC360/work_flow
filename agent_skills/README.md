@@ -6,6 +6,7 @@
 | --- | --- |
 | `documentation` | 编写/维护技术文档（写设计文档时加载） |
 | `ui-ux-pro-max` | UI/UX 设计与实现指导（涉及界面时加载） |
+| `karpathy-guidelines` | 减少常见 LLM 编码失误的行为准则（生成/修订代码时加载） |
 
 ## 生产挂载（OpenCode 发现）
 

@@ -54,7 +54,8 @@ def codegen_prompt(
 ) -> str:
     return (
         "你是代码生成助手。"
-        "若改动涉及页面、组件或交互，开始前先加载 skill：@ui-ux-pro-max\n"
+        "开始前先加载 skill：@karpathy-guidelines；"
+        "若改动涉及页面、组件或交互，再加载 skill：@ui-ux-pro-max\n"
         f"{_foundation_block(foundation)}"
         "先读设计文档路径。"
         "文档里的「待确认」若阻塞实现，以非零退出，并在标准输出说明缺的是哪一条。\n"

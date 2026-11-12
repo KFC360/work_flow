@@ -82,7 +82,7 @@ uv run alembic upgrade head
 sudo supervisorctl restart github-workflow:*
 ```
 
-内置 skills 在 `agent_skills/`（`documentation`、`ui-ux-pro-max`）。权威在应用仓；生产挂到 OpenCode 全局发现路径，**不**写入目标仓 worktree。Worker 跑 `opencode run` 时是非交互的：须在运行用户的 `~/.config/opencode/opencode.json` **预授权**检索（合并 `deploy/opencode/opencode.json.example`）：
+内置 skills 在 `agent_skills/`（`documentation`、`ui-ux-pro-max`、`karpathy-guidelines`）。权威在应用仓；生产挂到 OpenCode 全局发现路径，**不**写入目标仓 worktree。Worker 跑 `opencode run` 时是非交互的：须在运行用户的 `~/.config/opencode/opencode.json` **预授权**检索（合并 `deploy/opencode/opencode.json.example`）：
 
 - V1：`"permission": { "websearch": "allow", "webfetch": "allow", "question": "deny" }`
 - V2：`"permissions": [{ "action": "websearch", "resource": "*", "effect": "allow" }, …]`

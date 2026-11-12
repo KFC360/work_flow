@@ -114,7 +114,7 @@ uv run pytest
 CI：`.github/workflows/ci.yml` — `pull_request` / `master` push 时跑 pytest。  
 CD：`.github/workflows/deploy.yml` — **PR 合并进 `master` 后** SSH 到服务器 `git pull`、`uv sync`、重启 Supervisor。本系统只负责开到 PR；合并由人在 GitHub 完成，合并即触发 CD。
 
-CD 需在仓库 Settings → Secrets 配置：`DEPLOY_HOST`、`DEPLOY_USER`、`DEPLOY_SSH_KEY`、`DEPLOY_PATH`（可选 `DEPLOY_PORT`）。服务器账号需能对该目录 `git pull`，并免密 `sudo supervisorctl restart github-workflow:*`。
+CD 需在仓库 **Settings → Secrets and variables → Actions**（Repository secrets，不要只放在 Environment）配置：`DEPLOY_HOST`、`DEPLOY_USER`、`DEPLOY_SSH_KEY`、`DEPLOY_PATH`（可选 `DEPLOY_PORT`）。服务器账号需能对该目录 `git pull`，并免密 `sudo supervisorctl restart 'github-workflow:*'`。
 
 ## 目录
 

@@ -15,8 +15,16 @@ concurrency:
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    environment: production
     steps:
+      - name: Verify deploy secrets
+        run: |
+          missing=0
+          [ -n "${{ secrets.DEPLOY_HOST }}" ] || { echo "Missing secret: DEPLOY_HOST"; missing=1; }
+          [ -n "${{ secrets.DEPLOY_USER }}" ] || { echo "Missing secret: DEPLOY_USER"; missing=1; }
+          [ -n "${{ secrets.DEPLOY_SSH_KEY }}" ] || { echo "Missing secret: DEPLOY_SSH_KEY"; missing=1; }
+          [ -n "${{ secrets.DEPLOY_PATH }}" ] || { echo "Missing secret: DEPLOY_PATH"; missing=1; }
+          exit "$missing"
+
       - name: Deploy over SSH
         uses: appleboy/ssh-action@v1.2.0
         with:
@@ -25,12 +33,16 @@ jobs:
           key: ${{ secrets.DEPLOY_SSH_KEY }}
           port: ${{ secrets.DEPLOY_PORT || 22 }}
           script_stop: true
+          # Pass DEPLOY_PATH into the remote shell (required by appleboy/ssh-action).
+          envs: DEPLOY_PATH
           script: |
             set -euo pipefail
+            echo "Deploying in $DEPLOY_PATH"
             cd "$DEPLOY_PATH"
             git fetch origin master
             git checkout master
             git pull --ff-only origin master
+            command -v uv >/dev/null
             uv sync --extra dev
             if [ -f alembic.ini ]; then
               uv run alembic upgrade head
@@ -38,7 +50,7 @@ jobs:
             if [ -x ./scripts/sync_opencode_skills.sh ]; then
               ./scripts/sync_opencode_skills.sh || true
             fi
-            sudo supervisorctl restart 'github-workflow:*'
-            sudo supervisorctl status 'github-workflow:*'
+            sudo -n supervisorctl restart 'github-workflow:*'
+            sudo -n supervisorctl status 'github-workflow:*'
         env:
           DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}

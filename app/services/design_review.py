@@ -9,6 +9,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.crud import design_feedback as feedback_crud
+from app.crud import job as job_crud
 from app.models.design_feedback import DesignFeedback
 from app.models.issue import Issue
 from app.models.job import Job
@@ -16,6 +17,7 @@ from app.models.job import Job
 MAX_PENDING_ITEMS = 50
 MAX_ITEM_TITLE = 200
 MAX_HISTORY = 100
+MAX_DESIGN_DOC_CHARS = 262_144
 
 FEEDBACK_KIND_LABELS = {
     feedback_crud.HUMAN_COMMENT: "人工意见",
@@ -296,6 +298,32 @@ def check_pending_approval(
             0,
         )
     return PendingApprovalCheck(True, "", parse, 0)
+
+
+def design_edit_block_reason(db: Session, issue: Issue) -> str | None:
+    """Why the in-card manual edit entry is unavailable, or ``None`` if allowed.
+
+    This intentionally does not reuse the review/approval gate: failed
+    write/revise runs may be corrected by hand before an operator retries.
+    """
+    if issue.deleted_at is not None:
+        return "Issue 已删除，不能编辑设计文档"
+    if issue.kind != "feature":
+        return "只有功能迭代可以编辑设计文档"
+    if issue.github_state != "open":
+        return "Issue 已关闭，不能编辑设计文档"
+    if not (issue.design_doc_text or "").strip():
+        return "设计文档不存在或为空"
+    if issue.codegen_phase != "none":
+        return "已进入生成代码阶段，不能编辑"
+    allowed = issue.status == "pending_codegen" or (
+        issue.status == "failed" and issue.failed_action in {"write_doc", "revise_doc"}
+    )
+    if not allowed:
+        return "当前状态不允许编辑设计文档"
+    if job_crud.has_active_for_issue(db, issue.id):
+        return "有进行中的任务，完成后可编辑"
+    return None
 
 
 def feedback_views(

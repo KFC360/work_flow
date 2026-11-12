@@ -456,6 +456,15 @@ def test_issue_detail_two_column_layout_and_markdown(client: TestClient, db: Ses
     assert ids.index("task-title") < ids.index("log-title")
     assert text.count('id="issue-log"') == 1
 
+    assert "data-gw-issue-body" in text
+    assert 'id="issue-body-toggle"' in text
+    assert 'aria-expanded="false"' in text
+    assert 'aria-controls="issue-body-preview issue-body-full"' in text
+    assert 'data-gw-body-preview' in text
+    assert 'data-gw-body-full' in text
+    assert 'data-gw-body-note' in text
+    assert "data-gw-body-toggle" in text
+
     assert '<div class="md-content">' in text
     assert "<h3>正文标题</h3>" in text
     assert "<strong>粗体</strong>" in text
@@ -527,6 +536,8 @@ def test_issue_detail_markdown_xss_and_empty_body(client: TestClient, db: Sessio
     db.commit()
     resp = client.get(f"/issues/{issue.id}")
     assert "该 Issue 没有正文。" in resp.text
+    assert 'id="issue-body-toggle"' not in resp.text
+    assert "data-gw-body-preview" not in resp.text
 
 
 def test_issue_list_url_preserves_filters() -> None:

@@ -337,13 +337,23 @@ def test_manual_edit_saves_clears_approval_and_ignores_empty(
     old_path = issue.design_doc_path
     old_iteration = issue.iteration_no
 
-    resp = client.get(f"/issues/{issue.id}/design/edit")
+    resp = client.get(f"/issues/{issue.id}/design/edit", follow_redirects=False)
+    assert resp.status_code == 303
+    assert resp.headers["location"] == f"/issues/{issue.id}?edit=1#design-doc"
+
+    resp = client.get(f"/issues/{issue.id}?edit=1")
     assert resp.status_code == 200
     assert "设计文档 Markdown" in resp.text
+    assert 'id="design_doc_text"' in resp.text
+    assert 'name="design_doc_text"' in resp.text
+    assert 'maxlength="262144"' in resp.text
+    assert "保存" in resp.text
+    assert "取消" in resp.text
     assert issue.design_doc_text.splitlines()[0] in resp.text
 
     resp = client.get(f"/issues/{issue.id}")
-    assert f'href="/issues/{issue.id}/design/edit"' in resp.text
+    assert f'href="/issues/{issue.id}?edit=1#design-doc"' in resp.text
+    assert 'id="design_doc_text"' not in resp.text
 
     resp = client.post(
         f"/issues/{issue.id}/design/edit",
@@ -365,11 +375,35 @@ def test_manual_edit_saves_clears_approval_and_ignores_empty(
     )
     assert resp.status_code == 200
     assert "设计文档不能为空" in resp.text
+    assert 'aria-invalid="true"' in resp.text
+    assert "textarea-error" in resp.text
     db.refresh(issue)
     assert issue.design_doc_text == "# 新文档\n\n更新内容\n"
 
     detail = client.get(f"/issues/{issue.id}")
     assert "<h3>新文档</h3>" in detail.text
+
+
+def test_manual_edit_rejects_overlong_document(
+    client: TestClient, db: Session
+) -> None:
+    from app.services.design_review import MAX_DESIGN_DOC_CHARS
+
+    csrf = _login(client, db)
+    _repo, issue = _seed(db, number=35)
+    old_text = issue.design_doc_text
+    resp = client.post(
+        f"/issues/{issue.id}/design/edit",
+        data={
+            "csrf_token": csrf,
+            "design_doc_text": "x" * (MAX_DESIGN_DOC_CHARS + 1),
+        },
+        follow_redirects=False,
+    )
+    assert resp.status_code == 200
+    assert "设计文档不能超过" in resp.text
+    db.refresh(issue)
+    assert issue.design_doc_text == old_text
 
 
 def test_manual_edit_rejected_with_active_job_or_other_status(
@@ -378,24 +412,110 @@ def test_manual_edit_rejected_with_active_job_or_other_status(
     csrf = _login(client, db)
     repo, issue = _seed(db, number=26)
     job_crud.enqueue(db, issue_id=issue.id, repository_id=repo.id, action="write_doc")
-    resp = client.get(f"/issues/{issue.id}/design/edit", follow_redirects=False)
-    assert resp.status_code == 303
-    assert "进行中" in unquote(resp.headers["location"])
+    for url in (
+        f"/issues/{issue.id}/design/edit",
+        f"/issues/{issue.id}?edit=1",
+    ):
+        resp = client.get(url, follow_redirects=False)
+        assert resp.status_code == 303
+        assert "进行中" in unquote(resp.headers["location"])
     resp = client.post(
         f"/issues/{issue.id}/design/edit",
         data={"csrf_token": csrf, "design_doc_text": "# 改"},
         follow_redirects=False,
     )
-    assert resp.status_code == 303
+    assert resp.status_code == 409
+    assert "进行中" in resp.text
     db.refresh(issue)
     assert issue.design_doc_text.startswith("# 设计")
 
     issue.status = "failed"
     issue.failed_action = "generate_code"
     db.commit()
-    resp = client.get(f"/issues/{issue.id}/design/edit", follow_redirects=False)
+    resp = client.get(f"/issues/{issue.id}?edit=1", follow_redirects=False)
     assert resp.status_code == 303
     assert "状态不允许" in unquote(resp.headers["location"])
+    resp = client.post(
+        f"/issues/{issue.id}/design/edit",
+        data={"csrf_token": csrf, "design_doc_text": "# 改"},
+        follow_redirects=False,
+    )
+    assert resp.status_code == 409
+
+
+def test_design_edit_availability_matrix(
+    client: TestClient, db: Session
+) -> None:
+    _login(client, db)
+    _repo, issue = _seed(db, number=36)
+    url = f"/issues/{issue.id}?edit=1"
+
+    for status in ("generating", "generated", "pr_opened", "drafting"):
+        issue.status = status
+        db.commit()
+        resp = client.get(url, follow_redirects=False)
+        assert resp.status_code == 303, status
+
+    for failed_action in ("write_doc", "revise_doc"):
+        issue.status = "failed"
+        issue.failed_action = failed_action
+        issue.codegen_phase = "none"
+        db.commit()
+        resp = client.get(url)
+        assert resp.status_code == 200, failed_action
+
+    issue.failed_action = "generate_code"
+    db.commit()
+    assert client.get(url, follow_redirects=False).status_code == 303
+
+    issue.status = "pending_codegen"
+    issue.failed_action = None
+    issue.codegen_phase = "worktree_ready"
+    db.commit()
+    resp = client.get(url, follow_redirects=False)
+    assert resp.status_code == 303
+    assert "生成代码阶段" in unquote(resp.headers["location"])
+
+    issue.codegen_phase = "none"
+    issue.design_doc_text = "   "
+    db.commit()
+    resp = client.get(url, follow_redirects=False)
+    assert resp.status_code == 303
+    assert "为空" in unquote(resp.headers["location"])
+
+
+def test_manual_edit_allowed_after_write_doc_failure(
+    client: TestClient, db: Session
+) -> None:
+    csrf = _login(client, db)
+    _repo, issue = _seed(db, number=37, status="failed")
+    issue.failed_action = "write_doc"
+    issue.doc_approved_at = datetime.now(timezone.utc)
+    db.commit()
+
+    resp = client.post(
+        f"/issues/{issue.id}/design/edit",
+        data={"csrf_token": csrf, "design_doc_text": "# 人工修正\n"},
+        follow_redirects=False,
+    )
+    assert resp.status_code == 303
+    db.refresh(issue)
+    assert issue.design_doc_text == "# 人工修正\n"
+    assert issue.status == "failed"
+    assert issue.failed_action == "write_doc"
+    assert issue.doc_approved_at is None
+
+    issue.codegen_phase = "worktree_ready"
+    db.commit()
+    resp = client.post(
+        f"/issues/{issue.id}/design/edit",
+        data={"csrf_token": csrf, "design_doc_text": "# 不应写入\n"},
+        follow_redirects=False,
+    )
+    assert resp.status_code == 409
+    assert "生成代码阶段" in resp.text
+    db.refresh(issue)
+    assert issue.design_doc_text == "# 人工修正\n"
 
 
 def test_manual_edit_still_sanitizes_html(client: TestClient, db: Session) -> None:
@@ -655,7 +775,7 @@ def test_detail_has_review_card_edit_link_and_csrf(
     assert 'id="design-review"' in text
     assert "审阅与批准" in text
     assert "批准设计文档" in text
-    assert f'href="/issues/{issue.id}/design/edit"' in text
+    assert f'href="/issues/{issue.id}?edit=1#design-doc"' in text
     assert 'id="design-feedback-body"' in text
     assert "请代理修订" in text
     assert f'name="csrf_token" value="{csrf}"' in text

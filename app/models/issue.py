@@ -52,6 +52,7 @@ class Issue(Base):
     kind: Mapped[str] = mapped_column(String(32), nullable=False, default="pending")
     status: Mapped[str] = mapped_column(String(32), nullable=False)
     label_names: Mapped[list[str]] = mapped_column(ARRAY(String), nullable=False, default=list)
+    github_issue_type: Mapped[str | None] = mapped_column(String(128), nullable=True)
     design_doc_path: Mapped[str | None] = mapped_column(String(512), nullable=True)
     design_doc_text: Mapped[str | None] = mapped_column(Text, nullable=True)
     design_source_updated_at: Mapped[datetime | None] = mapped_column(

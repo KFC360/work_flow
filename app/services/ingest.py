@@ -19,6 +19,8 @@ SUPPORTED_ISSUE_ACTIONS = {
     "unlabeled",
     "closed",
     "reopened",
+    "typed",
+    "untyped",
     "deleted",
 }
 
@@ -28,6 +30,39 @@ def _text(value: Any) -> str | None:
         return None
     value = value.strip()
     return value or None
+
+
+def _issue_type_name(value: Any) -> str | None:
+    if isinstance(value, dict):
+        return _text(value.get("name"))
+    if isinstance(value, str):
+        return _text(value)
+    return None
+
+
+def issue_type_name(value: Any) -> str | None:
+    """GitHub Issue type name; accepts the REST object or a plain string."""
+    return _issue_type_name(value)
+
+
+def label_names_from_payload(value: Any) -> list[str]:
+    """Normalize GitHub labels: dict or string items, trimmed, deduped, in order."""
+    if not isinstance(value, list):
+        return []
+    names: list[str] = []
+    seen: set[str] = set()
+    for item in value:
+        if isinstance(item, dict):
+            name = _text(item.get("name"))
+        elif isinstance(item, str):
+            name = _text(item)
+        else:
+            name = None
+        if not name or name in seen:
+            continue
+        seen.add(name)
+        names.append(name)
+    return names
 
 
 def _int_or_none(value: Any) -> int | None:
@@ -140,8 +175,6 @@ def apply_issue_action(db: Session, repo_id: int, payload: dict[str, Any]) -> bo
     if action not in SUPPORTED_ISSUE_ACTIONS:
         return False
     issue = payload.get("issue") or {}
-    labels = [lbl.get("name") for lbl in (issue.get("labels") or []) if isinstance(lbl, dict)]
-    label_names = [n for n in labels if isinstance(n, str)]
     user = issue.get("user") or {}
     row = issue_crud.upsert_from_webhook(
         db,
@@ -153,9 +186,11 @@ def apply_issue_action(db: Session, repo_id: int, payload: dict[str, Any]) -> bo
         html_url=issue.get("html_url") or "",
         author_login=user.get("login") or "",
         github_state=issue.get("state") or "open",
-        label_names=label_names,
+        label_names=label_names_from_payload(issue.get("labels")),
         github_updated_at=_parse_dt(issue.get("updated_at")),
         action=action,
+        github_issue_type=issue_type_name(issue.get("type")),
+        github_issue_type_set=("type" in issue),
     )
     if action == "closed" and row.github_state == "closed" and row.deleted_at is None:
         # A stale closed event after a newer reopened must not cancel work.
@@ -185,8 +220,6 @@ def refresh_issue_from_github(
     ):
         raise GitHubAPIError("issue identity mismatch", status_code=409)
 
-    labels = [lbl.get("name") for lbl in (payload.get("labels") or []) if isinstance(lbl, dict)]
-    label_names = [n for n in labels if isinstance(n, str)]
     user = payload.get("user") or {}
     return issue_crud.upsert_from_webhook(
         db,
@@ -198,9 +231,11 @@ def refresh_issue_from_github(
         html_url=payload.get("html_url") or "",
         author_login=user.get("login") or "",
         github_state=payload.get("state") or "open",
-        label_names=label_names,
+        label_names=label_names_from_payload(payload.get("labels")),
         github_updated_at=_parse_dt(payload.get("updated_at")),
         action="edited",
+        github_issue_type=issue_type_name(payload.get("type")),
+        github_issue_type_set=("type" in payload),
     )
 
 

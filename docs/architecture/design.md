@@ -387,6 +387,7 @@ GitHub 字段由 API 覆盖。`local_path`、`doc_dir` 只由仓库页面写入�
 | kind | `pending`、`feature`、`support` |
 | status | 见下表 |
 | label_names | 文本数组 |
+| github_issue_type | GitHub Issue type 的 `name`，可空。只展示，不映射 `kind`，不参与筛选 |
 | design_doc_path | 相对路径，形如 `docs/v0003-13/design.md`。第一次写成功时定下，再次编写不改 |
 | design_doc_text | 文档全文。生成代码时把它写回仓库 |
 | design_source_updated_at | 本次文档使用的 `github_updated_at`，用于判断 Issue 后续是否变化 |
@@ -522,6 +523,7 @@ failed 投递可以在页面点「重试投递」改回 queued。系统不依赖
 | `opened` | 插入或按编号更新 Issue |
 | `edited` | 更新标题、正文、链接、更新时间 |
 | `labeled`、`unlabeled` | 更新 `label_names`。类型仍允许修改时，按 D2 重算 kind 和 status |
+| `typed`、`untyped` | 刷新标题、正文、链接、标签、状态与 `github_issue_type`。类型仍允许修改时，按 D2 重算 kind 和 status；type 本身不参与分类 |
 | `closed` | `github_state = closed` |
 | `reopened` | `github_state = open` |
 | `deleted` | 填写 `deleted_at` |
@@ -529,7 +531,7 @@ failed 投递可以在页面点「重试投递」改回 queued。系统不依赖
 
 `opened` 与已有编号重复时按更新处理，不新建第二行。
 
-从 payload 读取的字段只限于：`action`，`issue.number`、`id`、`title`、`body`、`html_url`、`state`、`updated_at`、`user.login`、`labels[].name`，`repository.id`。仓库名称和公司名称只来自 API。
+从 payload 读取的字段只限于：`action`，`issue.number`、`id`、`title`、`body`、`html_url`、`state`、`updated_at`、`user.login`、`labels[].name`、`type.name`，`repository.id`。仓库名称和公司名称只来自 API。payload 缺少 `type` 键时保留本地已有 `github_issue_type`；键存在且为 `null` 时清空。
 
 类型被锁住之后，标签变化仍然更新 `label_names`，但不改 `kind`。详情页在两者不一致时显示「GitHub 标签与本地类型不一致」。
 
@@ -559,7 +561,7 @@ failed 投递可以在页面点「重试投递」改回 queued。系统不依赖
 | 面包屑 | 公司 → 仓库 → Issue 等 ≥2 级路径时显示，最后一项为当前页不可点 |
 | 主区顶部 | 可选页面标题 + 一行说明；其下为 flash 告警区 |
 | 主区 | 页面内容 |
-| 页脚 | 仅版本或环境名可选；无营销文案 |
+| 页脚 | 仅版本或环境名可选；无营销文案。短页贴视口底部，长页在文档流末尾；不使用 `position: fixed` |
 
 未登录只有登录页，无业务顶栏。
 
@@ -651,7 +653,7 @@ failed 投递可以在页面点「重试投递」改回 queued。系统不依赖
 
 筛选：类型（全部 / 功能迭代 / 人工介入 / 待分类）、流程状态、GitHub 状态（默认 open）；参数见界面契约。按编号倒序。
 
-列：编号、标题、类型、状态、更新时间、操作。编号链到详情，也提供 GitHub 外链（新标签打开，`rel="noopener"`）。
+列：编号、标题、类型、GitHub Type、状态、更新时间、操作。编号链到详情，也提供 GitHub 外链（新标签打开，`rel="noopener"`）。标题单元格在作者下方展示 GitHub 标签：前 3 个 badge + `+N`（`title` 为完整标签列表）；GitHub Type 用 outline badge 展示，无 type 显示 `—`。type / labels 只展示，不提供筛选。
 
 空状态写明：还没有 Issue；若筛选的是人工介入，补充说明这一类本期只收录，处理流程以后再做。筛选后无结果时说明「没有符合筛选的 Issue」，并提供「清除筛选」。
 
@@ -677,11 +679,13 @@ failed 投递可以在页面点「重试投递」改回 queued。系统不依赖
 
 按钮是 POST 表单，带由 JWT `jti` 派生的 CSRF 隐藏字段。不满足条件的 POST 返回后以 flash 说明，不入队。分类按钮无需二次确认；贵重操作见界面契约。
 
+页头在结果条数旁提供「手动更新 Issues 状态」（`POST /repos/{id}/issues/sync`，带 CSRF）。它对该仓库 GitHub 上的 open 与 closed Issue 做全量分页对账：先读完全部页，再在一次事务中写回元数据、软删远端已不存在的行，并刷新本地已有 `pr_number` 的 PR 状态。任一分页失败都不写业务数据；仓库级 advisory lock 防止并发同步。结束后 303 回当前筛选 URL 并 flash 新增 / 更新 / 软删 / PR 刷新与失败摘要。它是 Webhook 的补偿通道，不入队、不改流程状态机。
+
 ### Issue 详情 `/issues/{id}`
 
 面包屑：公司 → 仓库 → `#编号 标题`。
 
-展示：标题与 GitHub 外链、正文（服务端 Markdown 渲染后经 HTML 白名单消毒；链接仅允许 `http` / `https` 并带 `rel="noopener noreferrer"`，代码块与表格内部滚动）、类型、流程状态、GitHub 状态、标签、设计文档路径、设计文档全文（同样走服务端 Markdown + nh3 白名单消毒，标题从 `h3` 起并保留层级；长文档、代码块与表格在卡片内滚动；渲染失败时回退到自动转义的源文 `<pre>`）、分支、PR 链接、最近一次任务的状态与日志摘录、`last_error`。桌面 `xl` 下使用 10 列栅格：正文与设计文档占 6 列，任务与 Worker、最新任务日志占 4 列；小于 `xl` 时按正文 →（设计文档）→ 任务 → 日志单列展示。
+展示：标题与 GitHub 外链、正文（服务端 Markdown 渲染后经 HTML 白名单消毒；链接仅允许 `http` / `https` 并带 `rel="noopener noreferrer"`，代码块与表格内部滚动）、本地类型、GitHub Type、流程状态、GitHub 状态、全部 GitHub 标签、设计文档路径、设计文档全文（同样走服务端 Markdown + nh3 白名单消毒，标题从 `h3` 起并保留层级；长文档、代码块与表格在卡片内滚动；渲染失败时回退到自动转义的源文 `<pre>`）、分支、PR 链接、最近一次任务的状态与日志摘录、`last_error`。桌面 `xl` 下使用 10 列栅格：正文与设计文档占 6 列，任务与 Worker、最新任务日志占 4 列；小于 `xl` 时按正文 →（设计文档）→ 任务 → 日志单列展示。
 
 操作与列表相同，待生成时额外有「重新编写文档」（需确认；文案写明会覆盖库内文档正文，路径与迭代号不变）。`github_updated_at > design_source_updated_at` 时页顶 `alert-warning`「Issue 在文档完成后有更新，如需同步请重新编写文档」。标签与本地类型不一致时同样 warning。
 
@@ -882,6 +886,17 @@ server {
     location = /openapi.json {
         auth_basic "docs";
         auth_basic_user_file /etc/nginx/htpasswd/github_workflow_docs;
+        proxy_pass http://127.0.0.1:8095;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    # 手动全仓 Issue 对账：应用预算 180s，代理读超时放宽到 300s。
+    location ~ ^/repos/[0-9]+/issues/sync$ {
+        proxy_read_timeout 300s;
+        proxy_send_timeout 300s;
         proxy_pass http://127.0.0.1:8095;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;

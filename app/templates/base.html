@@ -6,10 +6,10 @@
   <title>{% block title %}GitHub 工作流{% endblock %}</title>
   {% block head_extra %}{% endblock %}
 </head>
-<body class="min-h-dvh bg-base-200 text-base-content antialiased">
+<body class="flex min-h-dvh flex-col bg-base-200 text-base-content antialiased">
   <a href="#main" class="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-50 focus:rounded-lg focus:bg-base-100 focus:px-4 focus:py-2 focus:text-sm focus:font-medium focus:text-primary focus:shadow-lg">跳到主内容</a>
 
-  <header class="sticky top-0 z-30 border-b border-base-300 bg-base-100/90 backdrop-blur">
+  <header class="sticky top-0 z-30 shrink-0 border-b border-base-300 bg-base-100/90 backdrop-blur">
     <div class="navbar mx-auto max-w-7xl flex-wrap gap-x-4 gap-y-1 px-4 py-1.5 sm:px-6 lg:px-8">
       <div class="navbar-start w-auto flex-none">
         <a class="flex items-center gap-2 rounded-lg py-1 pr-2" href="/">
@@ -42,7 +42,7 @@
     </div>
   </header>
 
-  <main id="main" class="mx-auto w-full max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
+  <main id="main" class="mx-auto w-full max-w-7xl flex-1 px-4 py-6 sm:px-6 lg:px-8">
     {% if breadcrumbs and breadcrumbs|length > 1 %}
     <nav class="breadcrumbs mb-4 text-sm" aria-label="面包屑">
       <ul>
@@ -66,7 +66,7 @@
     {% block content %}{% endblock %}
   </main>
 
-  <footer class="footer footer-center border-t border-base-300 bg-base-100 p-4 text-xs text-base-content/60">
+  <footer class="footer footer-center shrink-0 border-t border-base-300 bg-base-100 p-4 text-xs text-base-content/60">
     <p>GitHub 工作流 · 内部运维台</p>
   </footer>
 

@@ -67,6 +67,32 @@ class GitHubClient:
     def get_issue(self, owner: str, repo: str, number: int) -> dict[str, Any]:
         return self._request("GET", f"/repos/{owner}/{repo}/issues/{number}")
 
+    def list_repository_issues(
+        self,
+        owner: str,
+        repo: str,
+        *,
+        state: str = "all",
+        page: int = 1,
+        per_page: int = 100,
+        sort: str = "created",
+        direction: str = "asc",
+    ) -> list[dict[str, Any]]:
+        return self._request(
+            "GET",
+            f"/repos/{owner}/{repo}/issues",
+            params={
+                "state": state,
+                "per_page": per_page,
+                "sort": sort,
+                "direction": direction,
+                "page": page,
+            },
+        )
+
+    def get_pull_request(self, owner: str, repo: str, number: int) -> dict[str, Any]:
+        return self._request("GET", f"/repos/{owner}/{repo}/pulls/{number}")
+
     def create_pull_request(
         self,
         owner: str,

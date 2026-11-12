@@ -33,6 +33,16 @@
           spinner.setAttribute('aria-hidden', 'true');
           submitButton.prepend(spinner);
         }
+        var busyLabel = submitButton.getAttribute('data-gw-busy-label');
+        if (busyLabel) {
+          var spans = submitButton.querySelectorAll('span');
+          for (var i = 0; i < spans.length; i += 1) {
+            if (!spans[i].hasAttribute('data-gw-spinner') && !spans[i].classList.contains('loading')) {
+              spans[i].textContent = busyLabel;
+              break;
+            }
+          }
+        }
       }
       Array.prototype.forEach.call(form.querySelectorAll('button'), function (button) {
         button.disabled = true;

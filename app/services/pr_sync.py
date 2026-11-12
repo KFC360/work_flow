@@ -109,6 +109,31 @@ def _event_wins(current: datetime | None, incoming: datetime | None) -> bool:
     return incoming >= current
 
 
+def apply_pull_request_snapshot(issue: Issue, pr: dict[str, Any]) -> bool:
+    """Write one REST PR snapshot onto an Issue, respecting the timestamp guard.
+
+    Returns False when the snapshot is older than the stored state or cannot be
+    mapped. Callers are responsible for committing the session.
+    """
+    if not isinstance(pr, dict) or not pr:
+        return False
+    if not pr.get("state") and not _merged(pr):
+        # Missing state fields: keep the current value instead of guessing closed.
+        return False
+    incoming_time = event_time(pr)
+    if not _event_wins(issue.pr_state_updated_at, incoming_time):
+        return False
+    state, merged_at = _derived_state(pr)
+    issue.pr_state = state
+    issue.pr_merged_at = merged_at
+    if incoming_time is not None:
+        issue.pr_state_updated_at = incoming_time
+    pr_url = pr.get("html_url")
+    if isinstance(pr_url, str) and pr_url.strip():
+        issue.pr_url = pr_url.strip()
+    return True
+
+
 def apply_pull_request_event(db: Session, payload: dict[str, Any]) -> tuple[bool, str | None]:
     """Apply one pull_request payload using local data only.
 

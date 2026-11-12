@@ -84,6 +84,7 @@ def _payload(**overrides):
         "state": "closed",
         "updated_at": NEW_UPDATED_AT.isoformat().replace("+00:00", "Z"),
         "labels": [{"name": "人工介入"}, {"name": "bug"}],
+        "type": {"id": 1, "name": "Bug"},
     }
     data.update(overrides)
     return data
@@ -134,6 +135,7 @@ def test_refresh_success_updates_metadata_and_keeps_local_doc(
     assert issue.body == "新正文"
     assert issue.author_login == "new-dev"
     assert sorted(issue.label_names) == ["bug", "人工介入"]
+    assert issue.github_issue_type == "Bug"
     assert issue.github_state == "closed"
     assert issue.github_updated_at == NEW_UPDATED_AT
     assert issue.github_state_updated_at == NEW_UPDATED_AT
@@ -142,6 +144,33 @@ def test_refresh_success_updates_metadata_and_keeps_local_doc(
     assert issue.design_doc_text == "# 本地文档"
     assert issue.design_source_updated_at == OLD_UPDATED_AT
     assert issue.last_error == "本地错误"
+
+
+def test_refresh_writes_and_clears_issue_type(
+    client: TestClient, db: Session, monkeypatch
+) -> None:
+    csrf = _login(client, db)
+    _repo, issue = _seed(db)
+    _use_client(monkeypatch, _payload())
+
+    resp = client.post(
+        f"/issues/{issue.id}/refresh",
+        data={"csrf_token": csrf},
+        follow_redirects=False,
+    )
+    assert resp.status_code == 303
+    db.refresh(issue)
+    assert issue.github_issue_type == "Bug"
+
+    _use_client(monkeypatch, _payload(type=None))
+    resp = client.post(
+        f"/issues/{issue.id}/refresh",
+        data={"csrf_token": csrf},
+        follow_redirects=False,
+    )
+    assert resp.status_code == 303
+    db.refresh(issue)
+    assert issue.github_issue_type is None
 
 
 def test_refresh_reclassifies_early_status_only(

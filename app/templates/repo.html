@@ -64,29 +64,30 @@
 {% endif %}
 
 {% set first_error = 'local_path' if field_errors.local_path else ('doc_dir' if field_errors.doc_dir else '') %}
-<div class="grid gap-6 lg:grid-cols-3">
-  <section class="card card-border order-1 bg-base-100 shadow-sm lg:order-2 lg:col-span-1" aria-labelledby="local-config-title">
-    <div class="card-body p-5">
+<div class="grid min-w-0 gap-6 lg:grid-cols-3">
+  <section class="card card-border order-1 min-w-0 bg-base-100 shadow-sm lg:order-2 lg:col-span-1" aria-labelledby="local-config-title">
+    <div class="card-body min-w-0 p-5">
       <h2 id="local-config-title" class="card-title text-base">
         {{ icon('settings', 'h-5 w-5 text-base-content/60') }}<span>本地配置</span>
       </h2>
-      <form method="post" action="/repos/{{ repo.id }}" class="space-y-4">
+      <form method="post" action="/repos/{{ repo.id }}" class="w-full min-w-0 space-y-4">
         <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
-        <fieldset class="fieldset">
+        <fieldset class="fieldset w-full min-w-0">
           <legend class="fieldset-legend">路径设置</legend>
 
           <label class="label" for="local_path">服务器项目路径</label>
           <input
             id="local_path"
             name="local_path"
-            class="input w-full font-mono text-sm {% if field_errors.local_path %}input-error{% endif %}"
+            class="input w-full min-w-0 max-w-full font-mono text-sm {% if field_errors.local_path %}input-error{% endif %}"
             value="{{ local_path }}"
+            title="{{ local_path }}"
             aria-describedby="local_path-help{% if field_errors.local_path %} local_path-error{% endif %}"
             {% if field_errors.local_path %}aria-invalid="true"{% endif %}
             {% if form_disabled %}disabled{% endif %}
             {% if first_error == 'local_path' %}autofocus{% endif %}
           />
-          <p id="local_path-help" class="label text-xs leading-5 text-base-content/60">须为已 clone 的 git 顶层绝对路径；origin 必须匹配 <code class="rounded bg-base-200 px-1 py-0.5 font-mono">{{ repo.github_full_name }}</code>。</p>
+          <p id="local_path-help" class="label text-xs leading-5 text-base-content/60">须为已 clone 的 git 顶层绝对路径；origin 必须匹配 <code class="break-all rounded bg-base-200 px-1 py-0.5 font-mono">{{ repo.github_full_name }}</code>。</p>
           {% if field_errors.local_path %}
           <p id="local_path-error" class="text-sm text-error">{{ field_errors.local_path }}</p>
           {% endif %}
@@ -95,14 +96,15 @@
           <input
             id="doc_dir"
             name="doc_dir"
-            class="input w-full font-mono text-sm {% if field_errors.doc_dir %}input-error{% endif %}"
+            class="input w-full min-w-0 max-w-full font-mono text-sm {% if field_errors.doc_dir %}input-error{% endif %}"
             value="{{ doc_dir }}"
+            title="{{ doc_dir }}"
             aria-describedby="doc_dir-help{% if field_errors.doc_dir %} doc_dir-error{% endif %}"
             {% if field_errors.doc_dir %}aria-invalid="true"{% endif %}
             {% if form_disabled %}disabled{% endif %}
             {% if first_error == 'doc_dir' %}autofocus{% endif %}
           />
-          <p id="doc_dir-help" class="label text-xs leading-5 text-base-content/60">相对路径，默认 <code class="rounded bg-base-200 px-1 py-0.5 font-mono">docs</code>；基石入口为 <code class="rounded bg-base-200 px-1 py-0.5 font-mono">{doc_dir}/README.md</code>。</p>
+          <p id="doc_dir-help" class="label text-xs leading-5 text-base-content/60">相对路径，默认 <code class="rounded bg-base-200 px-1 py-0.5 font-mono">docs</code>；基石入口为 <code class="break-all rounded bg-base-200 px-1 py-0.5 font-mono">{doc_dir}/README.md</code>。</p>
           {% if field_errors.doc_dir %}
           <p id="doc_dir-error" class="text-sm text-error">{{ field_errors.doc_dir }}</p>
           {% endif %}
@@ -114,8 +116,8 @@
     </div>
   </section>
 
-  <section class="card card-border order-2 bg-base-100 shadow-sm lg:order-1 lg:col-span-2" aria-labelledby="github-meta-title">
-    <div class="card-body p-5">
+  <section class="card card-border order-2 min-w-0 bg-base-100 shadow-sm lg:order-1 lg:col-span-2" aria-labelledby="github-meta-title">
+    <div class="card-body min-w-0 p-5">
       <div class="mb-4 flex flex-wrap items-center justify-between gap-2">
         <h2 id="github-meta-title" class="card-title text-base">
           {{ icon('repo', 'h-5 w-5 text-base-content/60') }}<span>GitHub 资料</span>

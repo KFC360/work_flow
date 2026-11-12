@@ -153,11 +153,12 @@ def run_write_doc(db: Session, job: Job) -> None:
         )
         job.log_excerpt = read_log_excerpt(log_path)
         job.exit_code = code
-        if code != 0:
-            raise AgentError(f"代理退出码 {code}", exit_code=code)
 
         target = worktree / rel
-        if not target.exists() or not target.read_text(encoding="utf-8").strip():
+        doc_ok = target.exists() and bool(target.read_text(encoding="utf-8").strip())
+        if not doc_ok:
+            if code != 0:
+                raise AgentError(f"代理退出码 {code}", exit_code=code)
             raise AgentError("设计文档缺失或为空")
 
         porcelain = run_git(["status", "--porcelain"], cwd=worktree)
@@ -167,6 +168,20 @@ def run_write_doc(db: Session, job: Job) -> None:
                 raise AgentError("出现已跟踪文件的修改")
         if not porcelain_untracked_covers(porcelain, rel):
             raise AgentError("未找到预期文档路径")
+
+        # Agent may exit non-zero after writing the doc (e.g. cancelled Web Search
+        # ask in non-interactive opencode run). Accept when the artifact is valid.
+        if code != 0:
+            note = (
+                f"\n[github_workflow] agent exit {code} ignored: "
+                "design doc written and validation passed\n"
+            )
+            logger.warning(
+                f"write_doc job={job.id} agent exit {code}; accepting valid design doc"
+            )
+            with log_path.open("a", encoding="utf-8") as logf:
+                logf.write(note)
+            job.log_excerpt = read_log_excerpt(log_path)
 
         text = target.read_text(encoding="utf-8")
         issue.design_doc_text = text

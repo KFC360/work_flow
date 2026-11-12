@@ -3,12 +3,24 @@
   "skills": [
     "/home/linuxuser/sites/work_flow/agent_skills"
   ],
+  "permission": {
+    "skill": "allow",
+    "read": "allow",
+    "edit": "allow",
+    "glob": "allow",
+    "grep": "allow",
+    "bash": "allow",
+    "websearch": "allow",
+    "webfetch": "allow",
+    "question": "deny"
+  },
   "permissions": [
     { "action": "skill", "resource": "*", "effect": "allow" },
     { "action": "read", "resource": "*", "effect": "allow" },
     { "action": "edit", "resource": "*", "effect": "allow" },
     { "action": "glob", "resource": "*", "effect": "allow" },
     { "action": "grep", "resource": "*", "effect": "allow" },
+    { "action": "shell", "resource": "*", "effect": "allow" },
     { "action": "bash", "resource": "*", "effect": "allow" },
     { "action": "websearch", "resource": "*", "effect": "allow" },
     { "action": "webfetch", "resource": "*", "effect": "allow" },

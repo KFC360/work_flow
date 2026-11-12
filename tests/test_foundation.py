@@ -32,7 +32,7 @@ def test_prompt_includes_foundation_when_present(tmp_path: Path) -> None:
     assert "# foundation" in prompt
     assert "@documentation" in prompt
     assert "Web Search" in prompt
-    assert "预授权" in prompt
+    assert "写完文件后再发起" in prompt
     assert "不得向用户提问" in prompt
 
 
@@ -46,7 +46,6 @@ def test_codegen_prompt_mentions_ui_skill() -> None:
     )
     assert "@ui-ux-pro-max" in prompt
     assert "Web Search" in prompt
-    assert "预授权" in prompt
 
 
 def test_prompt_requires_pending_when_missing(tmp_path: Path) -> None:

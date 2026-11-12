@@ -82,7 +82,15 @@ uv run alembic upgrade head
 sudo supervisorctl restart github-workflow:*
 ```
 
-内置 skills 在 `agent_skills/`（`documentation`、`ui-ux-pro-max`）。权威在应用仓；生产挂到 OpenCode 全局发现路径，**不**写入目标仓 worktree。Worker 跑 `opencode run` 时是非交互的：须在运行用户的 `~/.config/opencode/opencode.json` 把 `websearch` / `webfetch` 设为 `"effect": "allow"`（无需确认），并把 `question` 设为 `"deny"`；若仍是默认 `ask`，一检索就会被取消并退出码 1。**不要**写 `"websearch": false`（那会直接去掉检索工具）。示例见 `deploy/opencode/opencode.json.example`（可与现有 provider 配置合并）。
+内置 skills 在 `agent_skills/`（`documentation`、`ui-ux-pro-max`）。权威在应用仓；生产挂到 OpenCode 全局发现路径，**不**写入目标仓 worktree。Worker 跑 `opencode run` 时是非交互的：须在运行用户的 `~/.config/opencode/opencode.json` **预授权**检索（合并 `deploy/opencode/opencode.json.example`）：
+
+- V1：`"permission": { "websearch": "allow", "webfetch": "allow", "question": "deny" }`
+- V2：`"permissions": [{ "action": "websearch", "resource": "*", "effect": "allow" }, …]`
+- 示例文件两种都写了，可整段合并进现有 provider 配置
+- **不要** `"websearch": false`（会去掉工具）
+- 非 OpenCode 官方 provider 时，Worker 已默认注入 `OPENCODE_ENABLE_EXA=1`（及 Parallel）；若仍无检索工具，确认 OpenCode 版本与文档
+
+写文档任务：若代理退出码非 0 但目标 `design.md` 已写好且校验通过，系统仍记成功（避免「写完后又搜一次被取消」整单失败）。
 
 生成代码时 Worker 可为代理创建临时库 `gw_job_{job_id}`（`AGENT_TEST_DB_ENABLED`，默认开），只把该库的 URL 注入代理环境；任务结束删除。生产角色需 `CREATEDB`：
 

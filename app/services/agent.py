@@ -78,6 +78,9 @@ def _agent_env(extra: dict[str, str] | None = None) -> dict[str, str]:
     env.setdefault("TERM", "dumb")
     env.setdefault("NO_COLOR", "1")
     env.setdefault("CI", "1")
+    # OpenCode websearch backends for non-OpenCode providers (no-op if unused).
+    env.setdefault("OPENCODE_ENABLE_EXA", "1")
+    env.setdefault("OPENCODE_ENABLE_PARALLEL", "1")
     # Mark agent runs; ephemeral test DB URLs are re-injected via extra only.
     env["GITHUB_WORKFLOW_AGENT"] = "1"
     if extra:

@@ -169,19 +169,30 @@ def actions_for(db: Session, issue: Issue, repo: Repository) -> list[Action]:
             icon="file-plus",
         )
     elif issue.kind == "feature" and issue.status == "pending_codegen":
-        need_path_or_agent(
-            "生成代码",
-            f"/issues/{issue.id}/enqueue/generate_code",
-            "将调用代理生成代码，随后由系统提交、推送并创建 Pull Request。",
-            variant="primary",
-            icon="code",
-        )
+        if not issue.doc_approved_at:
+            out.append(
+                Action(
+                    "link",
+                    "审阅并批准",
+                    href=f"/issues/{issue.id}#design-review",
+                    variant="primary",
+                    icon="check",
+                )
+            )
+        else:
+            need_path_or_agent(
+                "生成代码",
+                f"/issues/{issue.id}/enqueue/generate_code",
+                "将调用代理生成代码，随后由系统提交、推送并创建 Pull Request。",
+                variant="primary",
+                icon="code",
+            )
         out.append(
             Action(
                 "button",
                 "重新编写文档",
                 form_action=f"/issues/{issue.id}/enqueue/write_doc",
-                confirm="将调用代理重写，并覆盖库内文档正文；迭代号和路径不变。",
+                confirm="将调用代理重写并覆盖库内文档正文；迭代号和路径不变，成功后需要重新批准。",
                 icon="refresh",
             )
         )
@@ -210,13 +221,30 @@ def actions_for(db: Session, issue: Issue, repo: Repository) -> list[Action]:
             )
         else:
             action = issue.failed_action or "generate_code"
-            need_path_or_agent(
-                "重试",
-                f"/issues/{issue.id}/enqueue/{action}",
-                "将重试失败步骤，可能重置系统隔离工作区；不会改动登记的本地仓库。",
-                variant="warning",
-                icon="rotate",
-            )
+            if action == "generate_code" and not issue.doc_approved_at:
+                out.append(
+                    Action(
+                        "link",
+                        "审阅并批准",
+                        href=f"/issues/{issue.id}#design-review",
+                        variant="primary",
+                        icon="check",
+                    )
+                )
+            else:
+                label = "重试修订" if action == "revise_doc" else "重试"
+                confirm = (
+                    "将重新调用代理按未处理意见修订同一份文档；成功后需要重新批准。"
+                    if action == "revise_doc"
+                    else "将重试失败步骤，可能重置系统隔离工作区；不会改动登记的本地仓库。"
+                )
+                need_path_or_agent(
+                    label,
+                    f"/issues/{issue.id}/enqueue/{action}",
+                    confirm,
+                    variant="warning",
+                    icon="rotate",
+                )
     elif issue.kind == "feature" and issue.status == "pr_opened" and issue.pr_url:
         out.append(
             Action("link", "查看 PR", href=issue.pr_url, variant="primary", icon="pr")

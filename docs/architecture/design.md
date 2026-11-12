@@ -1,6 +1,6 @@
 # GitHub 工作流
 
-内部工具。GitHub 上新建 Issue 后，通过 Webhook 记到本系统，按公司和代码仓库浏览。功能迭代类 Issue 由操作员依次触发「编写文档」和「生成代码」：前者调用本机的 OpenCode 或 Claude Code 写出设计文档，后者在目标仓库拉出分支、按文档生成代码，并自动创建 Pull Request。人工介入类 Issue 只收录和查看，留给以后的客诉，不进入写文档和写代码。
+内部工具。GitHub 上新建 Issue 后，通过 Webhook 记到本系统，按公司和代码仓库浏览。功能迭代类 Issue 由操作员依次触发「编写文档」和「生成代码」：前者调用本机的 OpenCode 或 Claude Code 写出设计文档，文档经人工审阅并批准后，后者才在目标仓库拉出分支、按文档生成代码，并自动创建 Pull Request。人工介入类 Issue 只收录和查看，留给以后的客诉，不进入写文档和写代码。
 
 文档现状：设计稿。可以按此拆任务。文末「待确认」只有开工时要核对的命令参数；其余选择已在「关键决策」里写明。
 
@@ -10,7 +10,8 @@
 
 - 收到 Issue Webhook 后，用 GitHub API 按仓库编号拉取公司和仓库资料并入库，同时记下 Issue 的标题、正文、作者、标签和链接。
 - 页面按「公司 → 仓库 → Issue」三级查看。服务器上的项目路径和文档目录在仓库页面填写，不从 GitHub 取。
-- 功能迭代：`编写文档` → 待生成 → `生成代码` → 已生成 → 自动创建 PR。
+- 功能迭代：`编写文档` → 待生成 → 人工批准 → `生成代码` → 已生成 → 自动创建 PR。
+- 设计文档可保存人工意见并按意见请代理修订；批准是可撤销的字段，不新增流程状态。
 - 编写文档和生成代码使用全站唯一的代理，二选一：OpenCode 或 Claude Code。设置页改一次，所有仓库跟着用。
 - 分支、提交、推送、创建 PR 由本系统执行，不交给代理。
 - 人工介入与功能迭代分开。人工介入本期没有处理动作。
@@ -37,8 +38,9 @@
 | 功能迭代 | 要走「设计文档 → 代码 → PR」的 Issue。GitHub 标签 `功能迭代` |
 | 人工介入 | 不改代码的事项，例如购买后如何退款。GitHub 标签 `人工介入`。本期只收录 |
 | 代理 | 本机命令行上的 OpenCode（`opencode`）或 Claude Code（`claude`）。全站只配置一个，所有仓库共用 |
-| 设计文档 | 代理根据 Issue 写成的 Markdown。正文以本系统数据库为准；进入目标仓库发生在生成代码之时 |
-| 任务 | 一次编写文档、生成代码或创建 PR。Web 只入队，Worker 执行 |
+| 设计文档 | 代理根据 Issue 写成、可人工编辑的 Markdown。正文以本系统数据库为准；进入目标仓库发生在生成代码之时 |
+| 文档批准 | 人工对当前文档版本的确认，记录在 `issue.doc_approved_at`。不改变 `issue.status`；正文变化后失效 |
+| 任务 | 一次编写文档、修订文档、生成代码或创建 PR。Web 只入队，Worker 执行 |
 
 ## 需求对照
 
@@ -50,7 +52,8 @@
 | 记下 Issue 内容 | [数据模型](#数据模型)、`issue` 表 |
 | 按公司、仓库显示列表，操作列有按钮 | [页面](#页面)、[界面契约](#界面契约) |
 | 点击后调用 OpenCode 或 Claude Code 写设计文档 | [编写文档](#编写文档)、[代理](#代理) |
-| 写完变为待生成，操作列变为 `生成代码` | [状态机](#状态机) |
+| 写完变为待生成，人工批准后操作列才出现 `生成代码` | [状态机](#状态机)、[设计文档审阅与批准](#设计文档审阅与批准) |
+| 对设计文档提意见、请代理修订、人工编辑 | [设计文档审阅与批准](#设计文档审阅与批准) |
 | 在对应目录切分支，按设计文档生成代码 | [生成代码与-pr](#生成代码与-pr) |
 | 生成完成后标记已生成，并自动建 PR | [生成代码与-pr](#生成代码与-pr) |
 | 功能迭代与人工介入分流 | [类型](#类型)、[人工介入](#人工介入) |
@@ -176,9 +179,13 @@ Webhook 仍只验签名，不读 JWT。`/docs`、`/redoc`、`/openapi.json` 只�
 
 页面不是“列几个字段就能点”的原型，而是浅色专业运维台：统一顶栏与面包屑、语义色状态徽章、加载 / 空 / 错 / 成功反馈、贵重操作二次确认、筛选进 URL。视觉与交互细则见 [界面契约](#界面契约)；业务字段与按钮条件仍以 [页面](#页面) 为准。
 
+### D9：设计文档先批准，再生成代码
+
+`pending_codegen` 仍是唯一「文档已入库、代码未生成」的状态，不新增状态名。`issue.doc_approved_at` 是可撤销的人工确认：只有它非空且待确认事项已处理时，生成代码入口和 POST 才放行。批准绑定当前正文版本；代理修订、重新编写、人工编辑任一写回正文的路径都清空批准。Worker 领取生成任务时再校验一次，防止排队期间批准被取消。详见 [设计文档审阅与批准](#设计文档审阅与批准)。
+
 ## 状态机
 
-下面五张图各管一个字段。流程按钮看 `issue.status`。生成代码的重试看 `issue.codegen_phase`，它不随 Issue 状态一起清掉。GitHub 上的开闭是 `github_state`，不改前两张图。
+下面的状态图各管一个字段；文档批准另有一张流程图。流程按钮看 `issue.status`。生成代码的重试看 `issue.codegen_phase`，它不随 Issue 状态一起清掉。GitHub 上的开闭是 `github_state`，不改前两张图。
 
 ### Issue 流程状态
 
@@ -213,6 +220,25 @@ stateDiagram-v2
 人工介入停在待处理，没有编写文档、生成代码和 PR。`已生成` 表示分支已经推送，PR 还没有成功；创建 PR 紧跟推送自动发生。稳定终点是已建PR。
 
 从失败回到生成中时，只把 `status` 改回生成中。做到哪一步由下一张图的 `codegen_phase` 决定，不从头再提交一遍。
+
+### 文档批准
+
+字段 `issue.doc_approved_at`，可空，不新增 `status`。待生成时它只控制生成代码入口：
+
+- `NULL`：未批准。列表和详情显示「未批准」，不出现可点的「生成代码」；直接 POST 被拒绝。
+- 非空：已批准。出现「生成代码」；取消批准后立即消失。
+- 批准 / 取消批准不改 `status`，只写字段并追加 `design_feedback` 审计。
+- 代理修订成功、重新编写成功、人工编辑保存成功都写入新正文，因此必须清空批准。
+- Issue 元数据同步、Webhook 更新、PR 状态刷新、普通生成失败都不清批准；stale 提示仍按 `design_source_updated_at` 判断。
+
+```mermaid
+flowchart LR
+  A[pending_codegen<br/>未批准] -->|批准| B[pending_codegen<br/>已批准]
+  B -->|取消批准| A
+  A -->|修订 / 重写 / 人工编辑成功| A
+  B -->|修订 / 重写 / 人工编辑成功| A
+  B -->|生成代码入队| C[生成中]
+```
 
 ### 代码生成阶段
 
@@ -391,6 +417,7 @@ GitHub 字段由 API 覆盖。`local_path`、`doc_dir` 只由仓库页面写入�
 | design_doc_path | 相对路径，形如 `docs/v0003-13/design.md`。第一次写成功时定下，再次编写不改 |
 | design_doc_text | 文档全文。生成代码时把它写回仓库 |
 | design_source_updated_at | 本次文档使用的 `github_updated_at`，用于判断 Issue 后续是否变化 |
+| doc_approved_at | 人工批准当前设计文档的 UTC 时间；`NULL` = 未批准。不随 Issue 同步或生成失败改变 |
 | branch_name | `dev_{number}`（生成代码专用开发分支，不以默认分支为工作分支） |
 | worktree_path | 生成代码使用的隔离 worktree；完成清理后可空 |
 | base_commit_sha | 创建 worktree 时的默认分支提交 |
@@ -399,7 +426,7 @@ GitHub 字段由 API 覆盖。`local_path`、`doc_dir` 只由仓库页面写入�
 | codegen_phase | `none`、`worktree_ready`、`doc_committed`、`agent_running`、`changes_validated`、`code_committed`、`pushed`、`pr_opened` |
 | pr_number | |
 | pr_url | |
-| failed_action | 失败时为 `write_doc`、`generate_code` 或 `create_pr`，否则为空 |
+| failed_action | 失败时为 `write_doc`、`revise_doc`、`generate_code` 或 `create_pr`，否则为空 |
 | last_error | 给页面看的短错误 |
 | github_updated_at | |
 | deleted_at | Issue 在 GitHub 删除后填写。列表默认不显示 |
@@ -421,6 +448,31 @@ GitHub 字段由 API 覆盖。`local_path`、`doc_dir` 只由仓库页面写入�
 
 `github_updated_at > design_source_updated_at` 时，详情页提示「Issue 在文档完成后有更新」。不自动重写文档。状态为待生成时可以点「重新编写文档」。
 
+迁移 `20261112_0005` 增加 `doc_approved_at` 与 `design_feedback`，并把迁移前已处于待生成且正文非空的历史行按 `updated_at` 回填批准，保持「迁移后仍可直接生成代码」；迁移后新写成功的文档由应用显式保持 `NULL`。回滚会删除该字段与反馈表。
+
+### design_feedback
+
+记录人对设计文档的意见、修订请求、待确认项决定、人工编辑与批准审计。不建数据库枚举；`kind` 由应用层校验，后续新增类型不需要迁移。不单独建待确认项表，待确认决定复用本表。
+
+| 列 | 说明 |
+| --- | --- |
+| id | 主键 |
+| issue_id | 外键。所属 Issue，索引 |
+| author_user_id | 外键 `users.id` |
+| author_username | 写入时快照，历史展示不依赖 join |
+| kind | `human_comment`、`revise_request`、`pending_confirm`、`pending_reject`、`human_edit`、`approve`、`unapprove` |
+| body | 意见、驳回理由或审计说明；非空默认空串 |
+| pending_item_key | 待确认项在当前文档版本中的稳定键，可空 |
+| pending_item_title | 待确认项标题快照，可空 |
+| doc_sha256 | 动作针对的文档版本；`design_doc_text` UTF-8 原文的 SHA-256 |
+| job_id | 修订请求触发的任务，或成功处理该意见的任务，可空 |
+| resolved_at | 意见被修订纳入的时间；其它 kind 不用 |
+| created_at | |
+
+索引：`(issue_id, created_at)` 展示历史；`(issue_id, doc_sha256, pending_item_key)` 取当前版本每项最新决定；部分索引 `(issue_id) WHERE kind IN ('human_comment','revise_request') AND resolved_at IS NULL` 取未处理意见。
+
+同一待确认项以 `created_at, id` 最新一条决定为准；文档正文任何变化都会改变 `doc_sha256`，旧决定、旧批准和旧意见因此自动失效而不删除。历史默认展示最近 100 条。
+
 ### 全站配置 `config.yaml`
 
 不建 `setting` 表。全站只有代理这一个选项，Web 和 Worker 都读项目根目录的 `config.yaml`：
@@ -440,7 +492,7 @@ agent: claude
 | id | 主键 |
 | issue_id | 外键 |
 | repository_id | 冗余，用来做仓库互斥 |
-| action | `write_doc`、`generate_code`、`create_pr` |
+| action | `write_doc`、`revise_doc`、`generate_code`、`create_pr` |
 | status | `queued`、`running`、`succeeded`、`failed`、`cancelled` |
 | agent | 开始执行时复制 `config.yaml` 里的 `agent`。排队期间还没写入 |
 | log_path | 宿主机日志文件 |
@@ -663,13 +715,16 @@ failed 投递可以在页面点「重试投递」改回 queued。系统不依赖
 | --- | --- |
 | 待分类，且 GitHub 为 open | `标为功能迭代`、`标为人工介入` |
 | 功能迭代，已收录，open，路径已填，origin 一致，且全站已选代理 | `编写文档`（需确认） |
-| 功能迭代，待生成，open，路径已填，origin 一致，且全站已选代理 | `生成代码`（需确认） |
-| 上两行里路径未填或 origin 不一致 | `填写项目路径`，链到仓库页面 |
-| 上两行里路径可用，但全站还没选代理 | `配置代理`，链到设置页 |
+| 功能迭代，待生成，open，未批准 | `审阅并批准`（链到详情审阅区）、`重新编写文档`（需确认） |
+| 功能迭代，待生成，open，已批准，路径已填，origin 一致，且全站已选代理 | `生成代码`（需确认）、`重新编写文档`（需确认） |
+| 需要路径的编写 / 生成 / 修订操作里路径未填或 origin 不一致 | `填写项目路径`，链到仓库页面 |
+| 需要代理的操作里路径可用，但全站还没选代理 | `配置代理`，链到设置页 |
 | 该 Issue 已有 queued 任务 | 禁用态文案 `排队中`，不改变 Issue 流程状态 |
 | 功能迭代，编写中或生成中 | `查看进度`，链到详情 |
 | 功能迭代，已生成，open | `重试创建 PR`（需确认） |
 | 功能迭代，失败，open，且失败动作是创建 PR | `重试`（需确认） |
+| 功能迭代，失败，open，失败动作为生成代码且未批准 | `审阅并批准`（不直接给重试） |
+| 功能迭代，失败，open，失败动作为修订文档 | `重试修订`（需确认；要求仍有未处理意见） |
 | 功能迭代，失败，open，且失败动作要动工作区，路径可用，全站已选代理 | `重试`（需确认） |
 | 功能迭代，失败，open，且失败动作要动工作区，路径不可用 | `填写项目路径` |
 | 功能迭代，失败，open，且失败动作要动工作区，路径可用但未选代理 | `配置代理` |
@@ -685,9 +740,27 @@ failed 投递可以在页面点「重试投递」改回 queued。系统不依赖
 
 面包屑：公司 → 仓库 → `#编号 标题`。
 
-展示：标题与 GitHub 外链、正文（服务端 Markdown 渲染后经 HTML 白名单消毒；链接仅允许 `http` / `https` 并带 `rel="noopener noreferrer"`，代码块与表格内部滚动）、本地类型、GitHub Type、流程状态、GitHub 状态、全部 GitHub 标签、设计文档路径、设计文档全文（同样走服务端 Markdown + nh3 白名单消毒，标题从 `h3` 起并保留层级；长文档、代码块与表格在卡片内滚动；渲染失败时回退到自动转义的源文 `<pre>`）、分支、PR 链接、最近一次任务的状态与日志摘录、`last_error`。桌面 `xl` 下使用 10 列栅格：正文与设计文档占 6 列，任务与 Worker、最新任务日志占 4 列；小于 `xl` 时按正文 →（设计文档）→ 任务 → 日志单列展示。
+展示：标题与 GitHub 外链、正文（服务端 Markdown 渲染后经 HTML 白名单消毒；链接仅允许 `http` / `https` 并带 `rel="noopener noreferrer"`，代码块与表格内部滚动）、本地类型、GitHub Type、流程状态、文档批准状态与时间、GitHub 状态、全部 GitHub 标签、设计文档路径、设计文档全文（同样走服务端 Markdown + nh3 白名单消毒，标题从 `h3` 起并保留层级；长文档、代码块与表格在卡片内滚动；渲染失败时回退到自动转义的源文 `<pre>`）、分支、PR 链接、最近一次任务的状态与日志摘录、`last_error`。桌面 `xl` 下使用 10 列栅格：正文、设计文档与审阅卡占 6 列，任务与 Worker、最新任务日志占 4 列；小于 `xl` 时按正文 →（设计文档）→（审阅）→ 任务 → 日志单列展示。
 
-操作与列表相同，待生成时额外有「重新编写文档」（需确认；文案写明会覆盖库内文档正文，路径与迭代号不变）。`github_updated_at > design_source_updated_at` 时页顶 `alert-warning`「Issue 在文档完成后有更新，如需同步请重新编写文档」。标签与本地类型不一致时同样 warning。
+操作与列表相同，待生成时额外有「重新编写文档」（需确认；文案写明会覆盖库内文档正文，路径与迭代号不变，成功后需要重新批准）。`github_updated_at > design_source_updated_at` 时页顶 `alert-warning`「Issue 在文档完成后有更新，如需同步请重新编写文档」。标签与本地类型不一致时同样 warning。
+
+### 设计文档审阅与批准
+
+详情页设计文档卡下有「审阅与批准」卡，仅在文档存在且状态为待生成时显示；有 queued / running 任务时整块只显示「完成后可再审阅」。卡片包含：
+
+- 批准状态、批准 / 取消批准按钮。批准前置：功能迭代、GitHub open、待生成、无 active Job、正文非空、表单 `doc_sha256` 等于当前正文哈希，且待确认规则满足；
+- 结构化「待确认」列表：解析 `design_doc_text` 中标题为「待确认」的 ATX 小节，优先取更深标题，其次取最外层列表项；每项按当前 `doc_sha256` 记录最新确认 / 驳回决定。存在未处理项时批准按钮 disabled，服务端同时拒绝；
+- 无结构化项或解析失败时，必须勾选「已通读待确认」才能批准；
+- 意见输入：`保存意见` 只写 `design_feedback`；`请代理修订` 在同一事务写入 `revise_request` 并排队 `revise_doc`，提交前二次确认；
+- 最近 100 条审阅历史。`pending_confirm` / `pending_reject` 不重复进历史流水，直接显示在待确认项状态上；旧 `doc_sha256` 的记录标记「旧版本文档」。
+
+设计文档卡头部在可编辑时提供「编辑文档」，进入 `/issues/{id}/design/edit`。编辑对象是库内 `design_doc_text`，保存走 POST + CSRF，成功后清空批准并写 `human_edit` 审计；仍按现有 Markdown + nh3 白名单渲染。不做协同编辑、版本锁或预览。
+
+### 设计文档修订
+
+`POST /issues/{id}/design/feedback` 的 `intent=revise` 在 `pending_codegen`、无 active Job、路径已填、已选代理、正文哈希匹配时，同一事务插入 `revise_request` 与 `revise_doc` Job，并回填 `job_id`。任一步失败整体回滚。
+
+`revise_doc` 任务沿用 Issue 的 `design_doc_path` / `iteration_no`，从 `origin/{default_branch}` 建临时 detached worktree `WORKTREE_ROOT/revise-doc/{job_id}`，先写入当前正文，再带上 Issue 标题 / 正文、基石、当前全文与按时间排序的未处理意见调用代理。成功要求：目标文件非空、`git status --porcelain` 只有该目标未跟踪文件、新正文与原文不同；代理非零退出但产物校验通过时沿用 `write_doc` 的容忍逻辑。成功后覆盖 `design_doc_text`、清空 `doc_approved_at`、状态回 `pending_codegen`，并把纳入的意见标记 `resolved_at`。失败则状态 `failed`、`failed_action = revise_doc`，正文与批准不变，意见保持未处理。失败后 `/enqueue/revise_doc` 只重跑修订，要求仍有未处理意见。
 
 页头 `page_header` 操作区在「在 GitHub 打开」右侧提供「刷新」POST 按钮（`POST /issues/{id}/refresh`，带 CSRF）。刷新只从 GitHub 重新拉取本 Issue 的标题、正文、标签、`github_state`、链接、作者和更新时间，成功 303 回详情并 flash，失败停留本页并显示错误；不入队、不取消任务、不写设计文档、不软删除本地行，GET 不产生写副作用。
 
@@ -727,7 +800,7 @@ failed 投递可以在页面点「重试投递」改回 queued。系统不依赖
 4. 确定相对路径。已有 `design_doc_path` 则沿用。否则用「本仓库已有最大 `iteration_no` + 1」和当前标题拼出路径，写进提示词，此时还不落库。
 5. 用全站配置的代理执行编写提示词。工作目录是临时 worktree。超时默认 900 秒。
 6. 成功条件同时满足：进程退出码 0；提示词里的那个相对路径存在且去掉空白后非空；`git status --porcelain` 只有这一条未跟踪文件，没有任何已跟踪文件的修改。
-7. 把文件内容写入 `design_doc_text`，并把当前 `github_updated_at` 写入 `design_source_updated_at`。若是第一次成功，同时写入 `iteration_no` 和 `design_doc_path`。Issue 改为待生成，`failed_action` 清空。
+7. 把文件内容写入 `design_doc_text`，并把当前 `github_updated_at` 写入 `design_source_updated_at`；同时清空 `doc_approved_at`。若是第一次成功，同时写入 `iteration_no` 和 `design_doc_path`。Issue 改为待生成，`failed_action` 清空。
 8. 退出码非零、超时、文件缺失、或出现其它改动：Issue 改为失败，`failed_action = write_doc`。第一次尚未成功时不分配 `iteration_no`。
 9. 成功或失败后都删除这个临时 worktree。只删除系统在 `WORKTREE_ROOT` 下创建的目录，不对 `local_path` 执行 reset、clean 或 stash。
 
@@ -740,7 +813,9 @@ failed 投递可以在页面点「重试投递」改回 queued。系统不依赖
 
 ## 生成代码与 PR
 
-前置：功能迭代、待生成或「失败且 failed_action 为生成代码或创建 PR」、GitHub 为 open、`design_doc_text` 非空。生成代码还要求 `local_path` 已填、全站已选代理且 origin 一致。单独重试创建 PR 不读工作区，没有路径也可以。
+前置：功能迭代、待生成或「失败且 failed_action 为生成代码或创建 PR」、GitHub 为 open、`design_doc_text` 非空。生成代码还要求 `doc_approved_at` 非空、`local_path` 已填、全站已选代理且 origin 一致。单独重试创建 PR 不读工作区，没有路径也可以，也不受批准门禁影响。
+
+未批准时 `POST /issues/{id}/enqueue/generate_code` 303 回详情并提示「请先批准设计文档」，不插入 Job。Worker 领取后再次校验；若批准已空，Job 改为 `cancelled`，Issue 回到待生成，不进入 git / 代理流程。
 
 分支名 `dev_{number}`，同一仓库内唯一。稳定 worktree 在 `WORKTREE_ROOT/codegen/{repository_id}/{issue_id}`。任务按 `codegen_phase` 与三个 SHA 续跑，重试不把已经做过的阶段再做一遍。
 
@@ -941,6 +1016,10 @@ GitHub Token 要能读取相关组织和仓库的元数据，并具备 Pull requ
 | 仓库或组织 404 | 投递 ignored |
 | 路径未填或 origin 不一致时点击编写或生成 | 409，操作列改为填写路径 |
 | 全站未选代理时点击编写或生成 | 409，操作列改为配置代理 |
+| 设计文档未批准时点击或直接 POST 生成代码 | 303 回详情并 flash「请先批准设计文档」，不入队 |
+| 有待确认未处理 / 未勾选「已通读」时批准 | 303 回详情并 flash，字段不变 |
+| 文档版本哈希与表单不一致 | 303 回详情并提示刷新后重试，不写库 |
+| 修订任务没有未处理意见 | 任务失败，`failed_action = revise_doc` |
 | 按钮与状态不符 | 409 |
 | `local_path` 本身有未提交修改 | 不受影响；任务只使用隔离 worktree |
 | 代理超时或非零退出 | 任务失败，保留日志 |
@@ -967,7 +1046,12 @@ git 和代理替换成测试双桩。至少覆盖：
 - `edited` 更新正文；关闭和重新打开只改 `github_state`；删除后默认列表不可见。
 - 类型锁定后，标签 Webhook 不改变 kind。
 - 操作列和 POST 的状态矩阵；queued 时 Issue 状态不变；关闭取消 queued；running 继续。
-- 编写成功：文档入库，临时 worktree 删除，状态待生成；序号唯一且并发分配不重复。
+- 编写成功：文档入库，临时 worktree 删除，状态待生成且批准为空；序号唯一且并发分配不重复。
+- 批准门禁：未批准时列表 / 详情无生成入口，直接 POST 被拒绝；批准后可入队；取消 / 重写 / 修订 / 人工编辑后批准失效。
+- 待确认解析、决定、版本失效，以及批准时的勾选与服务端复核。
+- 反馈写入与 `revise_doc` 同事务；修订成功 / 失败 / 重试的正文、批准、意见处理状态。
+- 人工编辑保存、空正文校验、active Job 拒绝、nh3 消毒与渲染回退。
+- Issue Webhook / 手动同步不清 `doc_approved_at`。
 - 编写时改了其它文件：失败且不入库；`local_path` 有未提交修改不影响隔离任务。
 - Issue 在文档完成后更新时显示提示。
 - 生成代码按 phase 与 SHA 续跑：agent 中断、commit 后数据库写回前崩溃、推送、建 PR 各失败一次后不重复提交。
@@ -1011,6 +1095,7 @@ github_workflow/
 │   ├── test_jobs.py                     # 排队不改 Issue、关闭取消、唯一 Worker 恢复
 │   ├── test_write_doc.py               # 临时 worktree、文档入库、失败不占序号
 │   ├── test_codegen.py                  # worktree、SHA 恢复、阶段续跑、已有 PR
+│   ├── test_design_review.py            # 待确认解析、批准门禁、反馈、修订、人工编辑
 │   └── test_nginx.py                    # 三条文档路径有 Basic Auth，Webhook 没有
 └── app/
     ├── __init__.py
@@ -1034,6 +1119,7 @@ github_workflow/
     │   ├── company.py
     │   ├── repository.py
     │   ├── issue.py
+    │   ├── design_feedback.py           # create / history / latest decisions / unresolved
     │   ├── job.py
     │   └── webhook_delivery.py
     ├── database/
@@ -1048,6 +1134,7 @@ github_workflow/
     │   ├── company.py
     │   ├── repository.py
     │   ├── issue.py
+    │   ├── design_feedback.py           # 意见、修订请求、待确认决定、编辑与批准审计
     │   ├── job.py
     │   └── webhook_delivery.py
     ├── schemas/
@@ -1063,7 +1150,8 @@ github_workflow/
     │   ├── issues.py                    # 分类、按钮前置、docs/v0003-13/design.md
     │   ├── git_repo.py                  # fetch、隔离 worktree、SHA 恢复、提交、推送
     │   ├── agent.py                     # 按 config.yaml 的 agent 调用 opencode 或 claude
-    │   └── prompts.py                   # 编写文档、生成代码
+    │   ├── design_review.py             # 文档哈希、待确认解析、批准校验
+    │   └── prompts.py                   # 编写文档、修订文档、生成代码
     ├── tasks/
     │   ├── worker.py                    # 单进程，Inbox/Pipeline 双循环、SIGTERM
     │   ├── inbox.py                     # GitHub 同步、退避与人工重试
@@ -1075,7 +1163,8 @@ github_workflow/
     │   ├── repos.html
     │   ├── repo.html                    # GitHub 资料只读，表单填路径和文档目录
     │   ├── issues.html
-    │   ├── issue_detail.html            # 进行中每 5 秒刷新
+    │   ├── issue_detail.html            # 进行中每 5 秒刷新；审阅与批准卡
+    │   ├── design_edit.html             # 人工编辑库内 Markdown
     │   ├── deliveries.html
     │   └── settings.html
     └── alembic/

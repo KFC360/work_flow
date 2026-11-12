@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import datetime, timezone
 from pathlib import Path
 
 from sqlalchemy.orm import Session
@@ -105,6 +106,8 @@ def test_write_doc_success(db: Session, tmp_path: Path, monkeypatch) -> None:
         github_updated_at=None,
         action="opened",
     )
+    issue.doc_approved_at = datetime.now(timezone.utc)
+    db.commit()
     job = job_crud.enqueue(db, issue_id=issue.id, repository_id=repo.id, action="write_doc")
     job.status = "running"
     db.commit()
@@ -183,6 +186,7 @@ def test_write_doc_success(db: Session, tmp_path: Path, monkeypatch) -> None:
     assert issue.design_doc_text is not None
     assert issue.iteration_no == 1
     assert issue.design_doc_path == "docs/v0001-9/design.md"
+    assert issue.doc_approved_at is None
 
 
 def test_write_doc_accepts_nonzero_exit_when_doc_valid(

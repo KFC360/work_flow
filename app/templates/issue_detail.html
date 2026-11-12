@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% from "macros/ui.html" import page_header, kind_badge, issue_status_badge, pr_state_badge, github_state_badge, job_badge, phase_label, worker_badge, issue_actions, live_status, action_label, github_type_badge, label_badges %}
+{% from "macros/ui.html" import page_header, kind_badge, issue_status_badge, approval_badge, badge, pr_state_badge, github_state_badge, job_badge, phase_label, worker_badge, issue_actions, live_status, action_label, github_type_badge, label_badges %}
 {% from "macros/icons.html" import icon %}
 {% block title %}#{{ issue.number }} {{ issue.title }}{% endblock %}
 
@@ -77,6 +77,15 @@
         <dd class="mt-1">{{ issue_status_badge(issue.status, status_label) }}</dd>
       </div>
       <div>
+        <dt class="text-xs text-base-content/60">文档批准</dt>
+        <dd class="mt-1 flex flex-wrap items-center gap-1.5">
+          {{ approval_badge(issue) }}
+          {% if issue.doc_approved_at %}
+          <span class="font-mono text-xs text-base-content/60" title="{{ issue.doc_approved_at | gw_iso }}">{{ issue.doc_approved_at | gw_time }} UTC</span>
+          {% endif %}
+        </dd>
+      </div>
+      <div>
         <dt class="text-xs text-base-content/60">GitHub</dt>
         <dd class="mt-1">{{ github_state_badge(issue.github_state) }}</dd>
       </div>
@@ -148,6 +157,11 @@
           <h2 id="design-doc-title" class="card-title text-base">设计文档</h2>
           <code class="break-all rounded bg-base-200 px-1.5 py-0.5 font-mono text-xs text-base-content">{{ issue.design_doc_path }}</code>
           {% if issue.iteration_no %}<span class="badge badge-sm badge-ghost font-mono">{{ issue.iteration_no | iteration_label }}</span>{% endif %}
+          {% if review_can_edit %}
+          <a class="btn btn-sm btn-ghost ml-auto gap-1.5" href="/issues/{{ issue.id }}/design/edit" aria-label="编辑库内设计文档">
+            {{ icon('file-plus') }}<span>编辑文档</span>
+          </a>
+          {% endif %}
         </div>
 
         {% if design_doc_html is not none %}
@@ -158,6 +172,166 @@
         {% else %}
         <pre class="max-h-[32rem] overflow-auto whitespace-pre-wrap break-words rounded-lg border border-base-300 bg-base-200 p-3 font-mono text-xs leading-relaxed text-base-content">{{ issue.design_doc_text }}</pre>
         {% endif %}
+      </div>
+    </section>
+    {% endif %}
+
+    {% if review_visible %}
+<section id="design-review" class="card card-border bg-base-100 shadow-sm" aria-labelledby="design-review-title">
+      <div class="card-body p-5">
+        <div class="mb-3 flex flex-wrap items-center gap-2">
+          <h2 id="design-review-title" class="card-title text-base">审阅与批准</h2>
+          {{ approval_badge(issue) }}
+          {% if issue.doc_approved_at %}
+          <span class="font-mono text-xs text-base-content/60">批准于 {{ issue.doc_approved_at | gw_time }} UTC</span>
+          {% endif %}
+        </div>
+
+        {% if review_has_active %}
+        <div class="alert alert-warning items-start gap-2 py-2 text-sm" role="status">
+          {{ icon('clock', 'h-5 w-5 shrink-0') }}
+          <span>有进行中的编写 / 修订任务，完成后可再审阅。</span>
+        </div>
+        {% else %}
+          {% if pending_parse.structured and pending_items %}
+          <div class="mb-2 flex flex-wrap items-center justify-between gap-2">
+            <h3 class="text-sm font-semibold text-base-content">结构化待确认</h3>
+            <span class="text-xs text-base-content/60">剩余 {{ pending_remaining }} 条</span>
+          </div>
+          <ul class="mb-4 space-y-3">
+            {% for item in pending_items %}
+            <li class="rounded-lg border border-base-300 p-3">
+              <div class="flex flex-wrap items-start justify-between gap-2">
+                <p class="min-w-0 flex-1 break-words text-sm text-base-content">{{ item.title }}</p>
+                {{ badge(item.tone, item.status) }}
+              </div>
+              {% if item.body %}
+              <p class="mt-1 whitespace-pre-line break-words text-xs text-base-content/70">备注：{{ item.body }}</p>
+              {% endif %}
+              <form method="post" action="/issues/{{ issue.id }}/design/pending/confirm" class="mt-2">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+                <input type="hidden" name="doc_sha256" value="{{ doc_sha256 }}" />
+                <input type="hidden" name="item_key" value="{{ item.key }}" />
+                <label class="mb-1 block text-xs font-medium text-base-content/70" for="pending-body-{{ loop.index }}">备注（驳回必填）</label>
+                <textarea id="pending-body-{{ loop.index }}" name="body" rows="2" class="textarea textarea-bordered w-full text-sm">{{ item.body }}</textarea>
+                <div class="mt-2 flex flex-wrap items-center gap-1.5">
+                  <button type="submit" name="decision" value="confirm" class="btn btn-xs btn-success gap-1">
+                    {{ icon('check') }}<span>确认采纳</span>
+                  </button>
+                  <button type="submit" name="decision" value="reject" formaction="/issues/{{ issue.id }}/design/pending/reject" class="btn btn-xs btn-error btn-outline gap-1">
+                    {{ icon('x') }}<span>驳回</span>
+                  </button>
+                </div>
+              </form>
+            </li>
+            {% endfor %}
+          </ul>
+          {% else %}
+          <div class="alert alert-warning items-start gap-2 py-2 text-sm" role="status">
+            {{ icon('alert-triangle', 'h-5 w-5 shrink-0') }}
+            <span>无法结构化待确认（{{ pending_reason_label or '没有可解析项' }}），需人工通读文档后勾选确认。</span>
+          </div>
+          {% endif %}
+
+          {% if pending_all_done %}
+          <p class="mb-2 text-xs text-success">全部待确认项已处理，可以批准。</p>
+          {% elif pending_remaining %}
+          <p class="mb-2 text-xs text-warning">还有 {{ pending_remaining }} 条待确认未处理，处理后才能批准。</p>
+          {% endif %}
+
+          <div class="mt-3 flex flex-wrap items-end gap-2 border-t border-base-300 pt-3">
+            {% if not issue.doc_approved_at %}
+            <form method="post" action="/issues/{{ issue.id }}/design/approve" class="flex flex-wrap items-end gap-2">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+              <input type="hidden" name="doc_sha256" value="{{ doc_sha256 }}" />
+              {% if pending_needs_read_confirmation %}
+              <label class="flex cursor-pointer items-center gap-2 text-sm text-base-content" for="read_confirmed">
+                <input id="read_confirmed" type="checkbox" name="read_confirmed" value="1" class="checkbox checkbox-sm checkbox-primary" required />
+                <span>已通读待确认</span>
+              </label>
+              {% endif %}
+              <button type="submit" class="btn btn-sm btn-primary gap-1.5"
+                      {% if pending_remaining %}disabled aria-disabled="true"{% endif %}
+                      data-gw-submit>
+                {{ icon('check-circle') }}<span>批准设计文档</span>
+              </button>
+            </form>
+            {% else %}
+            <form method="post" action="/issues/{{ issue.id }}/design/unapprove" class="flex flex-wrap items-center gap-2">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+              <button type="submit" class="btn btn-sm btn-outline gap-1.5" data-gw-submit>
+                {{ icon('x') }}<span>取消批准</span>
+              </button>
+            </form>
+            {% endif %}
+          </div>
+
+          <div class="mt-4 border-t border-base-300 pt-4">
+            <h3 class="mb-2 text-sm font-semibold text-base-content">审阅意见</h3>
+            <form method="post" action="/issues/{{ issue.id }}/design/feedback">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+              <input type="hidden" name="doc_sha256" value="{{ doc_sha256 }}" />
+              <label class="mb-1 block text-xs font-medium text-base-content/70" for="design-feedback-body">审阅意见</label>
+              <textarea id="design-feedback-body" name="body" rows="3" class="textarea textarea-bordered w-full text-sm" placeholder="写明希望代理修改的内容，或先保存意见稍后处理。"></textarea>
+              <div class="mt-2 flex flex-wrap items-center gap-1.5">
+                <button type="submit" name="intent" value="comment" class="btn btn-sm btn-outline gap-1.5" data-gw-submit>
+                  {{ icon('inbox') }}<span>保存意见</span>
+                </button>
+                {% if not review_path_available %}
+                <a class="btn btn-sm btn-ghost gap-1.5" href="/repos/{{ repo.id }}">{{ icon('repo') }}<span>填写项目路径</span></a>
+                {% elif not review_agent_available %}
+                <a class="btn btn-sm btn-ghost gap-1.5" href="/settings">{{ icon('settings') }}<span>配置代理</span></a>
+                {% else %}
+                <button type="submit" name="intent" value="revise"
+                        class="btn btn-sm btn-warning btn-outline gap-1.5"
+                        data-gw-confirm
+                        data-confirm-title="请代理修订设计文档"
+                        data-confirm-body="将调用代理改同一份文档，并清空当前批准；成功后需要重新审阅。">
+                  {{ icon('refresh') }}<span>请代理修订</span>
+                </button>
+                {% endif %}
+              </div>
+            </form>
+          </div>
+        {% endif %}
+
+        <div class="mt-4 border-t border-base-300 pt-4">
+          <h3 class="mb-2 text-sm font-semibold text-base-content">审阅历史</h3>
+          {% if feedback_views %}
+          <ol class="max-h-96 space-y-3 overflow-auto pr-1">
+            {% for item in feedback_views %}
+            <li class="rounded-lg border border-base-300 p-3 text-sm">
+              <div class="flex flex-wrap items-center gap-1.5 text-xs text-base-content/60">
+                <span class="font-medium text-base-content">{{ item.kind_label }}</span>
+                <span>@{{ item.row.author_username }}</span>
+                <span class="font-mono">{{ item.row.created_at | gw_time }} UTC</span>
+                {% if not item.is_current_doc %}
+                <span class="badge badge-xs badge-warning">旧版本文档</span>
+                {% endif %}
+                {% if item.resolved %}
+                <span class="badge badge-xs badge-success">已处理</span>
+                {% endif %}
+              </div>
+              {% if item.row.body %}
+              <p class="mt-1 whitespace-pre-line break-words text-base-content">{{ item.row.body }}</p>
+              {% endif %}
+              {% if item.job %}
+              <p class="mt-1 flex flex-wrap items-center gap-1.5 text-xs text-base-content/60">
+                <span>任务 #{{ item.job.id }}</span>
+                <span>{{ action_label(item.job.action) }}</span>
+                {{ job_badge(item.job.status) }}
+              </p>
+              {% endif %}
+              {% if item.row.doc_sha256 and item.row.kind in ('human_edit', 'approve', 'unapprove') %}
+              <p class="mt-1 font-mono text-xs text-base-content/50">文档版本 {{ item.row.doc_sha256[:8] }}</p>
+              {% endif %}
+            </li>
+            {% endfor %}
+          </ol>
+          {% else %}
+          <p class="text-sm text-base-content/60">还没有审阅记录。</p>
+          {% endif %}
+        </div>
       </div>
     </section>
     {% endif %}

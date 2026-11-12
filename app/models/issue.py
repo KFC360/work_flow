@@ -58,6 +58,9 @@ class Issue(Base):
     design_source_updated_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
+    doc_approved_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     branch_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
     worktree_path: Mapped[str | None] = mapped_column(String(1024), nullable=True)
     base_commit_sha: Mapped[str | None] = mapped_column(String(64), nullable=True)

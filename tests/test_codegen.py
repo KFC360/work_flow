@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import datetime, timezone
 from pathlib import Path
 
 import pytest
@@ -67,6 +68,7 @@ def _seed_feature_ready(db: Session, clone: Path, *, number: int = 7):
     issue.iteration_no = 1
     issue.codegen_phase = "none"
     issue.branch_name = f"dev_{number}"
+    issue.doc_approved_at = datetime.now(timezone.utc)
     db.commit()
     db.refresh(issue)
     return repo, issue

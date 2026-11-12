@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 
 from app.crud import webhook_delivery as delivery_crud
 from app.services.github_api import GitHubAPIError, GitHubClient
-from app.services.ingest import process_delivery_payload
+from app.services.ingest import process_issue_delivery, process_pull_request_delivery
 
 
 def _backoff_seconds(attempts: int, retry_after: int | None = None) -> int:
@@ -21,15 +21,27 @@ def process_one_delivery(db: Session, client: GitHubClient | None = None) -> boo
     if row is None:
         return False
     owns = client is None
-    client = client or GitHubClient()
+    client_obj = client
     try:
         if row.event == "ping":
             delivery_crud.mark_succeeded(db, row)
             return True
-        if row.event != "issues":
+        if row.event == "issues":
+            if client_obj is None:
+                client_obj = GitHubClient()
+            if not process_issue_delivery(db, client_obj, row.payload):
+                delivery_crud.mark_ignored(
+                    db, row, error=f"unsupported issues action {row.action or ''}".strip()
+                )
+                return True
+        elif row.event == "pull_request":
+            handled, reason = process_pull_request_delivery(db, row.payload)
+            if not handled:
+                delivery_crud.mark_ignored(db, row, error=reason or "pull_request ignored")
+                return True
+        else:
             delivery_crud.mark_ignored(db, row, error=f"unsupported event {row.event}")
             return True
-        process_delivery_payload(db, client, row.payload)
         delivery_crud.mark_succeeded(db, row)
         return True
     except GitHubAPIError as exc:
@@ -66,5 +78,5 @@ def process_one_delivery(db: Session, client: GitHubClient | None = None) -> boo
         logger.warning(f"delivery {row.delivery_id} unexpected: {exc}")
         return True
     finally:
-        if owns:
-            client.close()
+        if owns and client_obj is not None:
+            client_obj.close()

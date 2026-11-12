@@ -34,6 +34,23 @@ STATUS_LABELS = {
     "support_open": "待处理",
 }
 
+PR_STATE_LABELS = {
+    "open": "已建PR",
+    "merged": "已合并",
+    "closed": "已关闭（未合并）",
+    "none": "已建PR（状态未同步）",
+}
+
+
+def display_status_label(issue: Issue) -> str:
+    """List-column label: after PR creation show its lifecycle, not a fixed 已建PR."""
+    if issue.status == "pr_opened":
+        if issue.pr_state in {"open", "merged", "closed"}:
+            return PR_STATE_LABELS[issue.pr_state]
+        if issue.pr_number is not None:
+            return PR_STATE_LABELS["none"]
+    return STATUS_LABELS.get(issue.status, issue.status)
+
 KIND_LABELS = {
     "feature": "功能迭代",
     "support": "人工介入",
@@ -51,6 +68,14 @@ def actions_for(db: Session, issue: Issue, repo: Repository) -> list[Action]:
     out: list[Action] = []
 
     if issue.github_state == "closed":
+        if issue.pr_url:
+            out.append(
+                Action("link", "查看 PR", href=issue.pr_url, variant="primary", icon="pr")
+            )
+        return out
+
+    if issue.pr_state in {"merged", "closed"}:
+        # Terminal PR lifecycle: never offer server-side write actions.
         if issue.pr_url:
             out.append(
                 Action("link", "查看 PR", href=issue.pr_url, variant="primary", icon="pr")

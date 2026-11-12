@@ -4,7 +4,7 @@
 {% block title %}公司 · GitHub 工作流{% endblock %}
 
 {% block page_header %}
-{% call page_header('公司', '按 GitHub 所有者聚合的仓库与 Issue 概览。未结束 = 功能迭代尚未建 PR，或人工介入待处理，且 GitHub 仍为 open。', '总览') %}
+{% call page_header('公司', '按 GitHub 所有者聚合的仓库与 Issue 概览。未结束 = 功能迭代的 PR 尚未合并或关闭，或人工介入待处理，且 GitHub 仍为 open。', '总览') %}
   <span class="text-sm text-slate-500">共 <span class="font-mono-data text-slate-900">{{ total }}</span> 个公司</span>
 {% endcall %}
 {% endblock %}

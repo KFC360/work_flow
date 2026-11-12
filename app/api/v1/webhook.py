@@ -39,7 +39,7 @@ async def github_callback(
     except (UnicodeDecodeError, json.JSONDecodeError) as exc:
         raise HTTPException(status_code=400, detail="Invalid JSON") from exc
 
-    if x_github_event != "issues":
+    if x_github_event not in {"issues", "pull_request"}:
         return {"status": "ignored"}
 
     existing = delivery_crud.get(db, x_github_delivery)

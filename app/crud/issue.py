@@ -22,7 +22,14 @@ class RepoOpenSummary:
 
 def _status_condition(status: str):
     if status == UNFINISHED_STATUS:
-        return Issue.status != "pr_opened"
+        # A feature is unfinished until its PR reaches a terminal state. The
+        # synthetic legacy row with status=pr_opened and no PR number keeps the
+        # old "already opened" meaning.
+        return and_(
+            Issue.kind == "feature",
+            Issue.pr_state.notin_(["merged", "closed"]),
+            ~and_(Issue.status == "pr_opened", Issue.pr_number.is_(None)),
+        )
     return Issue.status == status
 
 
@@ -31,6 +38,7 @@ def _filters(
     kind: str | None = None,
     status: str | None = None,
     github_state: str | None = None,
+    pr_state: str | None = None,
 ):
     conditions = [Issue.deleted_at.is_(None)]
     if kind:
@@ -39,7 +47,25 @@ def _filters(
         conditions.append(_status_condition(status))
     if github_state:
         conditions.append(Issue.github_state == github_state)
+    if pr_state and pr_state != "all":
+        conditions.append(Issue.pr_state == pr_state)
     return and_(*conditions)
+
+
+def _aware(value: datetime | None) -> datetime | None:
+    if value is None:
+        return None
+    if value.tzinfo is None:
+        return value.replace(tzinfo=timezone.utc)
+    return value
+
+
+def _event_wins(current: datetime | None, incoming: datetime | None) -> bool:
+    if incoming is None:
+        return True
+    if current is None:
+        return True
+    return incoming >= _aware(current)
 
 
 def get(db: Session, issue_id: int) -> Issue | None:
@@ -50,6 +76,19 @@ def get_by_repo_number(db: Session, repository_id: int, number: int) -> Issue | 
     return db.scalar(
         select(Issue).where(Issue.repository_id == repository_id, Issue.number == number)
     )
+
+
+def list_by_pr_number(db: Session, repository_id: int, pr_number: int) -> list[Issue]:
+    stmt = select(Issue).where(
+        Issue.repository_id == repository_id,
+        Issue.pr_number == pr_number,
+    )
+    return list(db.scalars(stmt))
+
+
+CONTENT_ACTIONS = {"opened", "edited", "labeled", "unlabeled"}
+STATE_ACTIONS = {"opened", "edited", "labeled", "unlabeled", "closed", "reopened"}
+EARLY_STATUSES = {"pending_classify", "recorded", "support_open"}
 
 
 def upsert_from_webhook(
@@ -69,6 +108,7 @@ def upsert_from_webhook(
 ) -> Issue:
     row = get_by_repo_number(db, repository_id, number)
     kind, status = classify_labels(label_names)
+    event_time = _aware(github_updated_at)
 
     if action == "deleted":
         if row is None:
@@ -84,16 +124,15 @@ def upsert_from_webhook(
                 kind=kind,
                 status=status,
                 label_names=label_names,
-                github_updated_at=github_updated_at,
-                deleted_at=datetime.now(timezone.utc),
+                github_state_updated_at=event_time,
+                deleted_at=event_time or datetime.now(timezone.utc),
             )
             db.add(row)
-        else:
-            row.deleted_at = datetime.now(timezone.utc)
-            row.title = title
-            row.body = body or ""
-            row.label_names = label_names
-            row.github_updated_at = github_updated_at
+        elif row.deleted_at is None and _event_wins(row.github_state_updated_at, event_time):
+            # deleted_at is terminal: later events must not reveal the row again.
+            row.deleted_at = event_time or datetime.now(timezone.utc)
+            if event_time is not None:
+                row.github_state_updated_at = event_time
         db.commit()
         db.refresh(row)
         return row
@@ -111,30 +150,42 @@ def upsert_from_webhook(
             kind=kind,
             status=status,
             label_names=label_names,
-            github_updated_at=github_updated_at,
+            github_updated_at=event_time,
+            github_state_updated_at=event_time,
             branch_name=f"issue/{number}",
         )
         db.add(row)
+    elif row.deleted_at is not None:
+        # Soft-deleted rows are terminal; ignore late Issue events.
+        db.commit()
+        db.refresh(row)
+        return row
     else:
-        row.github_issue_id = github_issue_id
-        row.title = title
-        row.body = body or ""
-        row.html_url = html_url
-        row.author_login = author_login
-        row.github_state = github_state
-        row.label_names = label_names
-        row.github_updated_at = github_updated_at
-        row.deleted_at = None
-        if not kind_locked(row.status):
-            # only remap kind/status while still early
-            if row.status in {
-                "pending_classify",
-                "recorded",
-                "support_open",
-            }:
+        if action in CONTENT_ACTIONS and _event_wins(row.github_updated_at, event_time):
+            row.github_issue_id = github_issue_id
+            row.title = title
+            row.body = body or ""
+            row.html_url = html_url
+            row.author_login = author_login
+            row.label_names = label_names
+            if event_time is not None:
+                row.github_updated_at = event_time
+            if not kind_locked(row.status) and row.status in EARLY_STATUSES:
+                # only remap kind/status while still early
                 row.kind = kind
-                if row.status in {"pending_classify", "recorded", "support_open"}:
-                    row.status = status
+                row.status = status
+
+        if action in STATE_ACTIONS and _event_wins(row.github_state_updated_at, event_time):
+            if action == "closed":
+                target_state = "closed"
+            elif action == "reopened":
+                target_state = "open"
+            else:
+                target_state = github_state
+            row.github_state = target_state
+            if event_time is not None:
+                row.github_state_updated_at = event_time
+
     db.commit()
     db.refresh(row)
     return row
@@ -147,12 +198,18 @@ def list_for_repo(
     kind: str | None = None,
     status: str | None = None,
     github_state: str | None = "open",
+    pr_state: str | None = None,
     offset: int = 0,
     limit: int = 50,
 ) -> list[Issue]:
     stmt = select(Issue).where(
         Issue.repository_id == repository_id,
-        _filters(kind=kind, status=status, github_state=github_state),
+        _filters(
+            kind=kind,
+            status=status,
+            github_state=github_state,
+            pr_state=pr_state,
+        ),
     )
     stmt = stmt.order_by(Issue.number.desc()).offset(offset).limit(limit)
     return list(db.scalars(stmt))
@@ -165,13 +222,19 @@ def count_for_repo(
     kind: str | None = None,
     status: str | None = None,
     github_state: str | None = "open",
+    pr_state: str | None = None,
 ) -> int:
     stmt = (
         select(func.count())
         .select_from(Issue)
         .where(
             Issue.repository_id == repository_id,
-            _filters(kind=kind, status=status, github_state=github_state),
+            _filters(
+                kind=kind,
+                status=status,
+                github_state=github_state,
+                pr_state=pr_state,
+            ),
         )
     )
     return int(db.scalar(stmt) or 0)

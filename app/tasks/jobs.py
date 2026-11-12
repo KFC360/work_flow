@@ -41,6 +41,7 @@ from app.services.issues import (
     design_doc_relpath,
     is_legacy_codegen_branch,
 )
+from app.services.pr_sync import apply_initial_state
 from app.services.prompts import codegen_prompt, write_doc_prompt
 from app.services.worker_heartbeat import write_heartbeat
 
@@ -212,6 +213,7 @@ def run_create_pr(db: Session, job: Job) -> None:
         if existing:
             issue.pr_number = existing.get("number")
             issue.pr_url = existing.get("html_url")
+            apply_initial_state(issue, existing)
             issue.status = "pr_opened"
             issue.codegen_phase = "pr_opened"
             issue.failed_action = None
@@ -229,6 +231,7 @@ def run_create_pr(db: Session, job: Job) -> None:
         )
         issue.pr_number = pr.get("number")
         issue.pr_url = pr.get("html_url")
+        apply_initial_state(issue, pr)
         issue.status = "pr_opened"
         issue.codegen_phase = "pr_opened"
         issue.failed_action = None

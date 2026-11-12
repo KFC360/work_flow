@@ -681,7 +681,7 @@ failed 投递可以在页面点「重试投递」改回 queued。系统不依赖
 
 面包屑：公司 → 仓库 → `#编号 标题`。
 
-展示：标题与 GitHub 外链、正文（纯文本 / 简单换行保留，不做完整 Markdown 渲染 Issue 正文）、类型、流程状态、GitHub 状态、标签、设计文档路径、设计文档全文（Markdown 源文用等宽 `<pre class="whitespace-pre-wrap">` 展示，本期不做 GFM 渲染以免 XSS 与构建依赖）、分支、PR 链接、最近一次任务的状态与日志摘录、`last_error`。
+展示：标题与 GitHub 外链、正文（服务端 Markdown 渲染后经 HTML 白名单消毒；链接仅允许 `http` / `https` 并带 `rel="noopener noreferrer"`，代码块与表格内部滚动）、类型、流程状态、GitHub 状态、标签、设计文档路径、设计文档全文（Markdown 源文用等宽 `<pre class="whitespace-pre-wrap">` 展示，本期不做 GFM 渲染以免 XSS 与构建依赖）、分支、PR 链接、最近一次任务的状态与日志摘录、`last_error`。桌面 `xl` 下正文与设计文档在左栏，任务与 Worker、最新任务日志在右栏；小于 `xl` 时按正文 →（设计文档）→ 任务 → 日志单列展示。
 
 操作与列表相同，待生成时额外有「重新编写文档」（需确认；文案写明会覆盖库内文档正文，路径与迭代号不变）。`github_updated_at > design_source_updated_at` 时页顶 `alert-warning`「Issue 在文档完成后有更新，如需同步请重新编写文档」。标签与本地类型不一致时同样 warning。
 

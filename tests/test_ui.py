@@ -168,15 +168,44 @@ def test_layout_footer_and_repo_input_constraints() -> None:
 
     repo = (root / "repo.html").read_text(encoding="utf-8")
     assert 'class="grid min-w-0 gap-6 lg:grid-cols-3"' in repo
-    assert 'class="card-body min-w-0 p-5"' in repo
-    assert 'class="w-full min-w-0 space-y-4"' in repo
-    assert 'class="fieldset w-full min-w-0"' in repo
+    assert "card card-border order-1 min-w-0 max-w-full" in repo
+    assert 'class="card-body min-w-0 max-w-full p-5"' in repo
+    assert 'class="w-full min-w-0 max-w-full space-y-4"' in repo
+    assert 'class="fieldset w-full min-w-0 max-w-full"' in repo
     assert repo.count("class=\"input w-full min-w-0 max-w-full font-mono text-sm") == 2
     assert 'title="{{ local_path }}"' in repo
     assert 'title="{{ doc_dir }}"' in repo
 
+    local_help = repo.split('id="local_path-help"', 1)[1].split("</p>", 1)[0]
+    doc_help = repo.split('id="doc_dir-help"', 1)[1].split("</p>", 1)[0]
+    for help_block in (local_help, doc_help):
+        assert "label" not in help_block.split(">", 1)[0]
+        for token in ("whitespace-normal", "break-words", "min-w-0", "max-w-full"):
+            assert token in help_block.split(">", 1)[0]
+
+    assert repo.count("<code class=\"break-all whitespace-normal") == 3
+
+    assert 'data-gw-submit' in repo
+    assert "{% if form_disabled %}disabled{% endif %}" in repo
+
     scripts = (root / "partials/app_scripts.html").read_text(encoding="utf-8")
     assert "data-gw-busy-label" in scripts
+
+
+def test_repo_long_path_renders_in_value_and_title(client: TestClient, db: Session) -> None:
+    _login(client, db)
+    _company, repo = _seed_company_repo(db)
+    long_path = "/home/linuxuser/repos/" + "nested/" * 12 + "work_flow"
+    repo.local_path = long_path
+    repo.doc_dir = "documentation/" + "deep/" * 10 + "docs"
+    db.commit()
+
+    resp = client.get(f"/repos/{repo.id}")
+    assert resp.status_code == 200
+    assert f'value="{long_path}"' in resp.text
+    assert f'title="{long_path}"' in resp.text
+    assert f'value="{repo.doc_dir}"' in resp.text
+    assert f'title="{repo.doc_dir}"' in resp.text
 
 
 def test_issue_list_and_detail_show_type_and_labels(

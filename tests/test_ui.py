@@ -300,12 +300,33 @@ def test_issue_detail_two_column_layout_and_markdown(client: TestClient, db: Ses
         "```python\nprint('<code>')\n```\n\n"
         "| 列 | 值 |\n| --- | --- |\n| A | 1 |"
     )
-    issue.design_doc_text = "# 设计源文"
+    issue.design_doc_text = (
+        "# 设计源文\n\n"
+        "## 章节\n\n"
+        "- 设计列表\n\n"
+        "```python\nprint('<doc>')\n```\n\n"
+        "| 列 | 值 |\n| --- | --- |\n| B | 2 |"
+    )
     db.commit()
 
     resp = client.get(f"/issues/{issue.id}")
     assert resp.status_code == 200
     text = resp.text
+
+    assert "xl:grid-cols-10" in text
+    assert "xl:col-span-6" in text
+    assert "xl:col-span-4" in text
+    assert "xl:grid-cols-3" not in text
+    assert "xl:col-span-2" not in text
+
+    assert 'method="post" action="/issues/' in text
+    assert f'action="/issues/{issue.id}/refresh"' in text
+    refresh_pos = text.index(f'action="/issues/{issue.id}/refresh"')
+    assert text.index("在 GitHub 打开") < refresh_pos
+    refresh_form = text[refresh_pos:]
+    assert 'name="csrf_token"' in refresh_form.split("</form>", 1)[0]
+    assert 'aria-label="从 GitHub 刷新本 Issue 的标题、正文和标签"' in refresh_form
+    assert "刷新" in refresh_form.split("</form>", 1)[0]
 
     assert 'data-gw-region="issue-side"' in text
     ids = _region_ids(text, "issue-side")
@@ -332,8 +353,35 @@ def test_issue_detail_two_column_layout_and_markdown(client: TestClient, db: Ses
     assert "<h2" not in body_card
 
     design_start = text.index('id="design-doc-title"')
-    assert "<pre" in text[design_start:]
-    assert "># 设计源文</pre>" in text
+    design_card = text[design_start:].split("</section>", 1)[0]
+    assert 'class="md-content' in design_card
+    assert 'role="region"' in design_card
+    assert "max-h-[32rem]" in design_card
+    assert "<h3>设计源文</h3>" in design_card
+    assert "<h4>章节</h4>" in design_card
+    assert "<li>设计列表</li>" in design_card
+    assert 'tabindex="0"><code>print(\'&lt;doc&gt;\')' in design_card
+    assert "<table>" in design_card and "<td>B</td>" in design_card
+    assert "># 设计源文</pre>" not in design_card
+
+
+def test_issue_detail_hides_empty_design_doc(client: TestClient, db: Session) -> None:
+    _login(client, db)
+    _company, repo = _seed_company_repo(db)
+    issue = _seed_issue(db, repo, number=9, status="recorded", kind="feature", title="空文档")
+
+    issue.design_doc_text = "   \n"
+    db.commit()
+    resp = client.get(f"/issues/{issue.id}")
+    assert resp.status_code == 200
+    assert 'id="design-doc-title"' not in resp.text
+
+    issue.design_doc_text = "# 有内容"
+    issue.design_doc_path = ""
+    db.commit()
+    resp = client.get(f"/issues/{issue.id}")
+    assert resp.status_code == 200
+    assert 'id="design-doc-title"' not in resp.text
 
 
 def test_issue_detail_markdown_xss_and_empty_body(client: TestClient, db: Session) -> None:

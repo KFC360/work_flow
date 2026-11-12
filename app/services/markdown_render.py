@@ -58,24 +58,26 @@ CLEAN_CONTENT_TAGS = {
     "form",
 }
 
-_TAG_MIN_LEVEL = 3
-_TAG_MAX_LEVEL = 6
+# Issue bodies start at h3; h1 and h2 both collapse to h3 to preserve the
+# previous page output. Design docs keep their relative hierarchy instead.
+_ISSUE_HEADING_MAP = {1: 3, 2: 3, 3: 4, 4: 5, 5: 6, 6: 6}
+_DESIGN_DOC_HEADING_MAP = {1: 3, 2: 4, 3: 5, 4: 6, 5: 6, 6: 6}
+
 _PRE_TAG_RE = re.compile(r"<pre(\s[^>]*)?>")
 
 
 class _NormalizeHeadings(Treeprocessor):
-    """Shift Markdown headings so body content starts at h3 and never passes h6."""
+    """Shift Markdown headings down so body content fits under the card title."""
+
+    def __init__(self, md: Markdown, heading_map: dict[int, int]) -> None:
+        super().__init__(md)
+        self._heading_map = heading_map
 
     def run(self, root):
         for element in root.iter():
             tag = element.tag
             if tag in {"h1", "h2", "h3", "h4", "h5", "h6"}:
-                level = int(tag[1])
-                if level < _TAG_MIN_LEVEL:
-                    level = _TAG_MIN_LEVEL
-                else:
-                    level = min(level + 1, _TAG_MAX_LEVEL)
-                element.tag = f"h{level}"
+                element.tag = f"h{self._heading_map[int(tag[1])]}"
             elif tag == "pre":
                 element.set("tabindex", "0")
         return root
@@ -98,15 +100,23 @@ def _make_pre_focusable(html: str) -> str:
     return _PRE_TAG_RE.sub(add, html)
 
 
-class _IssueBodyExtension(Extension):
+class _HeadingExtension(Extension):
+    def __init__(self, heading_map: dict[int, int]) -> None:
+        super().__init__()
+        self._heading_map = heading_map
+
     def extendMarkdown(self, md: Markdown) -> None:  # noqa: N802 (upstream API)
-        md.treeprocessors.register(_NormalizeHeadings(md), "gw_issue_headings", 5)
+        md.treeprocessors.register(
+            _NormalizeHeadings(md, self._heading_map), "gw_headings", 5
+        )
 
 
-def render_issue_body(raw: str | None) -> Markup | None:
-    """Render an Issue body to sanitized HTML.
+def _render_markdown(
+    raw: str | None, heading_map: dict[int, int], label: str
+) -> Markup | None:
+    """Convert Markdown and sanitize it with the shared nh3 whitelist.
 
-    Returns ``None`` for blank bodies or when the pipeline fails. Callers must
+    Returns ``None`` for blank input or when the pipeline fails. Callers must
     fall back to auto-escaped plain text in the failure case; never mark an
     unsanitized string as ``Markup``.
     """
@@ -114,7 +124,7 @@ def render_issue_body(raw: str | None) -> Markup | None:
         return None
     try:
         md = Markdown(
-            extensions=["fenced_code", "tables", "sane_lists", _IssueBodyExtension()],
+            extensions=["fenced_code", "tables", "sane_lists", _HeadingExtension(heading_map)],
             output_format="html",
         )
         converted = md.convert(raw)
@@ -129,5 +139,15 @@ def render_issue_body(raw: str | None) -> Markup | None:
         )
         return Markup(_make_pre_focusable(cleaned))
     except Exception as exc:  # noqa: BLE001 - failure must close, never leak raw HTML
-        logger.warning(f"issue body markdown render failed: {exc}")
+        logger.warning(f"{label} markdown render failed: {exc}")
         return None
+
+
+def render_issue_body(raw: str | None) -> Markup | None:
+    """Render an Issue body to sanitized HTML, starting headings at h3."""
+    return _render_markdown(raw, _ISSUE_HEADING_MAP, "issue body")
+
+
+def render_design_doc(raw: str | None) -> Markup | None:
+    """Render a design document to sanitized HTML with relative heading levels."""
+    return _render_markdown(raw, _DESIGN_DOC_HEADING_MAP, "design document")

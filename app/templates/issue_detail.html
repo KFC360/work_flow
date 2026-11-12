@@ -8,6 +8,14 @@
   {% if issue.html_url %}
   <a class="btn btn-sm btn-outline gap-1.5" href="{{ issue.html_url }}" target="_blank" rel="noopener">{{ icon('external-link') }}<span>在 GitHub 打开</span></a>
   {% endif %}
+  <form method="post" action="/issues/{{ issue.id }}/refresh" class="inline-flex">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+    <button type="submit" class="btn btn-sm btn-ghost gap-1.5"
+            aria-label="从 GitHub 刷新本 Issue 的标题、正文和标签"
+            data-gw-submit>
+      {{ icon('refresh') }}<span>刷新</span>
+    </button>
+  </form>
 {% endcall %}
 {% endblock %}
 
@@ -105,8 +113,8 @@
   </div>
 </section>
 
-<div class="grid gap-4 xl:grid-cols-3 xl:items-start">
-  <div class="min-w-0 space-y-4 xl:col-span-2">
+<div class="grid gap-4 xl:grid-cols-10 xl:items-start">
+  <div class="min-w-0 space-y-4 xl:col-span-6">
     <section class="card card-border bg-base-100 shadow-sm" aria-labelledby="issue-body-title">
       <div class="card-body p-5">
         <div class="mb-3 flex flex-wrap items-baseline justify-between gap-2">
@@ -125,7 +133,7 @@
       </div>
     </section>
 
-    {% if issue.design_doc_path %}
+    {% if has_design_doc %}
     <section class="card card-border bg-base-100 shadow-sm" aria-labelledby="design-doc-title">
       <div class="card-body p-5">
         <div class="mb-3 flex flex-wrap items-center gap-2">
@@ -133,13 +141,21 @@
           <code class="break-all rounded bg-base-200 px-1.5 py-0.5 font-mono text-xs text-base-content">{{ issue.design_doc_path }}</code>
           {% if issue.iteration_no %}<span class="badge badge-sm badge-ghost font-mono">{{ issue.iteration_no | iteration_label }}</span>{% endif %}
         </div>
-        <pre class="max-h-[32rem] overflow-auto whitespace-pre-wrap break-words rounded-lg border border-base-300 bg-base-200 p-3 font-mono text-xs leading-relaxed text-base-content">{{ issue.design_doc_text or '' }}</pre>
+
+        {% if design_doc_html is not none %}
+        <div class="md-content max-h-[32rem] overflow-auto rounded-lg border border-base-300 p-3 pr-2"
+             tabindex="0" role="region" aria-label="设计文档正文">
+          {{ design_doc_html }}
+        </div>
+        {% else %}
+        <pre class="max-h-[32rem] overflow-auto whitespace-pre-wrap break-words rounded-lg border border-base-300 bg-base-200 p-3 font-mono text-xs leading-relaxed text-base-content">{{ issue.design_doc_text }}</pre>
+        {% endif %}
       </div>
     </section>
     {% endif %}
   </div>
 
-  <div class="min-w-0 space-y-4 xl:col-span-1" data-gw-region="issue-side">
+  <div class="min-w-0 space-y-4 xl:col-span-4" data-gw-region="issue-side">
     <section class="card card-border bg-base-100 shadow-sm" aria-labelledby="task-title">
       <div class="card-body p-5">
         <h2 id="task-title" class="card-title mb-4 text-base">

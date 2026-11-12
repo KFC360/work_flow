@@ -163,6 +163,47 @@ def apply_issue_action(db: Session, repo_id: int, payload: dict[str, Any]) -> bo
     return True
 
 
+def refresh_issue_from_github(
+    db: Session, client: GitHubClient, issue, repo
+):
+    """Fetch one Issue from GitHub and upsert its metadata via the webhook path.
+
+    Only metadata is written. Local design-doc fields, PR fields, last_error and
+    Jobs are left untouched. An identity mismatch fails closed and writes nothing.
+    """
+    full_name = repo.github_full_name or ""
+    owner, _, name = full_name.partition("/")
+    if not owner or not name:
+        raise GitHubAPIError("invalid repository full name", status_code=409)
+
+    payload = client.get_issue(owner, name, issue.number)
+    if not isinstance(payload, dict):
+        raise GitHubAPIError("issue identity mismatch", status_code=409)
+    if (
+        _int_or_none(payload.get("id")) != issue.github_issue_id
+        or _int_or_none(payload.get("number")) != issue.number
+    ):
+        raise GitHubAPIError("issue identity mismatch", status_code=409)
+
+    labels = [lbl.get("name") for lbl in (payload.get("labels") or []) if isinstance(lbl, dict)]
+    label_names = [n for n in labels if isinstance(n, str)]
+    user = payload.get("user") or {}
+    return issue_crud.upsert_from_webhook(
+        db,
+        repository_id=issue.repository_id,
+        github_issue_id=payload["id"],
+        number=payload["number"],
+        title=payload.get("title") or "",
+        body=payload.get("body") or "",
+        html_url=payload.get("html_url") or "",
+        author_login=user.get("login") or "",
+        github_state=payload.get("state") or "open",
+        label_names=label_names,
+        github_updated_at=_parse_dt(payload.get("updated_at")),
+        action="edited",
+    )
+
+
 def process_issue_delivery(
     db: Session, client: GitHubClient, payload: dict[str, Any]
 ) -> bool:

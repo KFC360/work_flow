@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Annotated
 from urllib.parse import quote, urlencode
 
+import httpx
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from sqlalchemy.orm import Session
@@ -19,6 +20,8 @@ from app.models.user import User
 from app.services.actions import KIND_LABELS, STATUS_LABELS, actions_for, display_status_label
 from app.services.config_agent import read_agent
 from app.services.foundation import foundation_relpath, read_foundation_from_origin
+from app.services.github_api import GitHubAPIError, GitHubClient
+from app.services.ingest import refresh_issue_from_github
 from app.services.issues import (
     KIND_FEATURE,
     KIND_SUPPORT,
@@ -27,7 +30,7 @@ from app.services.issues import (
     classify_labels,
 )
 from app.services.job_logs import read_job_log_tail, safe_job_log_path
-from app.services.markdown_render import render_issue_body
+from app.services.markdown_render import render_design_doc, render_issue_body
 from app.services.worker_heartbeat import HeartbeatView, read_heartbeat
 
 router = APIRouter(tags=["issues"])
@@ -85,6 +88,19 @@ def _worker_text(issue, heartbeat: HeartbeatView) -> str:
     if heartbeat.status == "running":
         return "执行中（本 Issue）" if heartbeat.issue_id == issue.id else "执行中（其他 Issue）"
     return "无心跳，任务可能不会执行"
+
+
+def _refresh_error_message(exc: Exception) -> str:
+    if isinstance(exc, GitHubAPIError):
+        if exc.status_code == 409:
+            return "刷新失败：拉取到的 Issue 与本地记录不一致，未更新"
+        if exc.status_code in (404, 410):
+            return "刷新失败：GitHub 上找不到该 Issue，可能已删除或无权访问"
+        if exc.status_code in (401, 403):
+            return "刷新失败：GitHub 授权失败，请检查访问令牌"
+        if exc.status_code == 429:
+            return "刷新失败：GitHub 限流，请稍后再试"
+    return "刷新失败：暂时无法连接 GitHub，请稍后重试"
 
 
 @router.get("/repos/{repo_id}/issues", response_class=HTMLResponse)
@@ -229,6 +245,12 @@ def issue_detail(
     worker_text = _worker_text(issue, heartbeat)
     issue_body_html = render_issue_body(issue.body)
     issue_has_body = bool(issue.body and issue.body.strip())
+    design_doc_html = render_design_doc(issue.design_doc_text)
+    has_design_doc = bool(
+        issue.design_doc_path
+        and issue.design_doc_text
+        and issue.design_doc_text.strip()
+    )
     return templates.TemplateResponse(
         request,
         "issue_detail.html",
@@ -239,6 +261,8 @@ def issue_detail(
             company=company,
             issue_body_html=issue_body_html,
             issue_has_body=issue_has_body,
+            design_doc_html=design_doc_html,
+            has_design_doc=has_design_doc,
             actions=actions_for(db, issue, repo),
             kind_label=KIND_LABELS.get(issue.kind, issue.kind),
             status_label=STATUS_LABELS.get(issue.status, issue.status),
@@ -295,6 +319,39 @@ def issue_status_fragment(
             "log_warning": log_warning,
             "polling": issue.status in {"drafting", "generating"},
         },
+    )
+
+
+@router.post("/issues/{issue_id}/refresh")
+def refresh_issue(
+    issue_id: int,
+    request: Request,
+    db: Annotated[Session, Depends(get_db)],
+    user: Annotated[User, Depends(require_csrf)],
+):
+    issue = issue_crud.get(db, issue_id)
+    if issue is None or issue.deleted_at is not None:
+        return templates.TemplateResponse(
+            request, "404.html", _ctx(user, message="未找到 Issue"), status_code=404
+        )
+    repo = repository_crud.get(db, issue.repository_id)
+    if repo is None:
+        return templates.TemplateResponse(
+            request, "404.html", _ctx(user, message="未找到仓库"), status_code=404
+        )
+
+    client = GitHubClient()
+    try:
+        refresh_issue_from_github(db, client, issue, repo)
+    except (GitHubAPIError, httpx.HTTPError, ValueError) as exc:
+        return RedirectResponse(
+            f"/issues/{issue_id}?flash=error&msg={quote(_refresh_error_message(exc))}",
+            status_code=303,
+        )
+    finally:
+        client.close()
+    return RedirectResponse(
+        f"/issues/{issue_id}?flash=ok&msg={quote('已刷新')}", status_code=303
     )
 
 

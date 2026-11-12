@@ -64,6 +64,9 @@ class GitHubClient:
     def get_user(self, login: str) -> dict[str, Any]:
         return self._request("GET", f"/users/{login}")
 
+    def get_issue(self, owner: str, repo: str, number: int) -> dict[str, Any]:
+        return self._request("GET", f"/repos/{owner}/{repo}/issues/{number}")
+
     def create_pull_request(
         self,
         owner: str,

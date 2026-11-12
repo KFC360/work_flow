@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from datetime import datetime, timezone
 from html.parser import HTMLParser
 from pathlib import Path
@@ -661,6 +662,55 @@ def test_pages_use_daisyui_components(client: TestClient, db: Session) -> None:
     assert 'class="card ' in resp.text
     assert "card-title" in resp.text
     assert "card-actions" in resp.text
+
+
+def _nav_section(html: str, label: str) -> str:
+    match = re.search(rf'<nav[^>]*aria-label="{label}"[^>]*>(.*?)</nav>', html, re.S)
+    assert match, f'缺少 aria-label="{label}" 的导航地标'
+    return match.group(1)
+
+
+def _nav_links(html: str, label: str) -> list[str]:
+    return re.findall(r"<a\b[^>]*>", _nav_section(html, label))
+
+
+def test_topbar_splits_business_and_account_nav(client: TestClient, db: Session) -> None:
+    _login(client, db)
+
+    resp = client.get("/")
+    assert resp.status_code == 200
+    business = _nav_section(resp.text, "业务导航")
+    account = _nav_section(resp.text, "账号导航")
+    assert 'href="/"' in business
+    assert "公司" in business
+    assert 'href="/deliveries"' in business
+    assert "Webhook 投递" in business
+    assert "设置" not in business
+    assert 'href="/settings"' in account
+    assert "设置" in account
+    assert "navbar-center" not in resp.text
+    assert resp.text.count('href="/settings"') == 1
+
+    current = [tag for tag in _nav_links(resp.text, "业务导航") if 'aria-current="page"' in tag]
+    assert len(current) == 1
+    assert 'href="/"' in current[0]
+
+    assert 'method="post"' in resp.text
+    assert 'action="/logout"' in resp.text
+    assert 'name="csrf_token"' in resp.text
+
+    resp = client.get("/deliveries")
+    assert resp.status_code == 200
+    current = [tag for tag in _nav_links(resp.text, "业务导航") if 'aria-current="page"' in tag]
+    assert len(current) == 1
+    assert 'href="/deliveries"' in current[0]
+
+    resp = client.get("/settings")
+    assert resp.status_code == 200
+    current = [tag for tag in _nav_links(resp.text, "账号导航") if 'aria-current="page"' in tag]
+    assert len(current) == 1
+    assert 'href="/settings"' in current[0]
+    assert 'aria-current="page"' not in _nav_section(resp.text, "业务导航")
 
 
 def test_forms_use_daisyui5(client: TestClient, db: Session) -> None:

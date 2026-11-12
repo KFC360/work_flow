@@ -11,7 +11,7 @@
 
   <header class="sticky top-0 z-30 shrink-0 border-b border-base-300 bg-base-100/90 backdrop-blur">
     <div class="navbar mx-auto max-w-7xl flex-wrap gap-x-4 gap-y-1 px-4 py-1.5 sm:px-6 lg:px-8">
-      <div class="navbar-start w-auto flex-none">
+      <div class="navbar-start w-auto flex-none flex-wrap items-center gap-x-3 gap-y-1">
         <a class="flex items-center gap-2 rounded-lg py-1 pr-2" href="/">
           <span class="flex h-8 w-8 items-center justify-center rounded-lg bg-primary text-primary-content">{{ icon('webhook', 'h-5 w-5') }}</span>
           <span class="leading-tight">
@@ -19,15 +19,19 @@
             <span class="block text-[11px] text-base-content/60">内部运维台</span>
           </span>
         </a>
+        <nav aria-label="业务导航">
+          <ul class="menu menu-horizontal menu-sm gap-1 px-1">
+            <li><a class="{% if nav == 'companies' %}menu-active{% endif %}" href="/"{% if nav == 'companies' %} aria-current="page"{% endif %}>{{ icon('building') }}<span>公司</span></a></li>
+            <li><a class="{% if nav == 'deliveries' %}menu-active{% endif %}" href="/deliveries"{% if nav == 'deliveries' %} aria-current="page"{% endif %}>{{ icon('webhook') }}<span>Webhook 投递</span></a></li>
+          </ul>
+        </nav>
       </div>
-      <div class="navbar-center order-3 w-full justify-start overflow-x-auto lg:order-none lg:w-auto">
-        <ul class="menu menu-horizontal menu-sm gap-1 px-1" aria-label="主导航">
-          <li><a class="{% if nav == 'companies' %}menu-active{% endif %}" href="/"{% if nav == 'companies' %} aria-current="page"{% endif %}>{{ icon('building') }}<span>公司</span></a></li>
-          <li><a class="{% if nav == 'deliveries' %}menu-active{% endif %}" href="/deliveries"{% if nav == 'deliveries' %} aria-current="page"{% endif %}>{{ icon('webhook') }}<span>Webhook 投递</span></a></li>
-          <li><a class="{% if nav == 'settings' %}menu-active{% endif %}" href="/settings"{% if nav == 'settings' %} aria-current="page"{% endif %}>{{ icon('settings') }}<span>设置</span></a></li>
-        </ul>
-      </div>
-      <div class="navbar-end w-auto flex-none gap-2">
+      <div class="navbar-end w-auto flex-none basis-full justify-end gap-2 sm:basis-auto sm:ms-auto">
+        <nav aria-label="账号导航">
+          <ul class="menu menu-horizontal menu-sm gap-1 px-1">
+            <li><a class="{% if nav == 'settings' %}menu-active{% endif %}" href="/settings"{% if nav == 'settings' %} aria-current="page"{% endif %}>{{ icon('settings') }}<span>设置</span></a></li>
+          </ul>
+        </nav>
         <div class="avatar avatar-placeholder">
           <div class="w-8 rounded-full bg-neutral text-neutral-content">
             <span class="text-xs font-semibold" aria-hidden="true">{{ (user.username or '?')[:1]|upper }}</span>
@@ -36,7 +40,7 @@
         <span class="hidden text-sm text-base-content/70 sm:inline">{{ user.username }}</span>
         <form method="post" action="/logout" class="inline-flex">
           <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
-          <button type="submit" class="btn btn-ghost btn-sm gap-1.5" data-gw-submit>{{ icon('logout') }}<span class="hidden sm:inline">退出</span></button>
+          <button type="submit" class="btn btn-ghost btn-sm gap-1.5" data-gw-submit aria-label="退出">{{ icon('logout') }}<span class="hidden sm:inline">退出</span></button>
         </form>
       </div>
     </div>

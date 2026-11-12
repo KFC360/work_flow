@@ -3,16 +3,18 @@
 {% block title %}页面未找到 · GitHub 工作流{% endblock %}
 
 {% block content %}
-<div class="gw-card mx-auto max-w-xl px-6 py-12 text-center">
-  <span class="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-slate-100 text-slate-500">
-    {{ icon('issue', 'h-7 w-7') }}
-  </span>
-  <p class="font-mono-data text-3xl font-semibold tracking-tight text-slate-300">404</p>
-  <h1 class="mt-1 text-xl font-semibold tracking-tight text-slate-900">页面未找到</h1>
-  <p class="mt-2 text-sm leading-6 text-slate-600">{{ message or '请求的资源不存在或已被删除。' }}</p>
-  <div class="mt-6 flex flex-wrap items-center justify-center gap-2">
-    <a class="btn btn-primary btn-sm gap-1.5" href="/">{{ icon('arrow-left') }}<span>回公司列表</span></a>
-    <a class="btn btn-ghost btn-sm gap-1.5" href="/deliveries">{{ icon('webhook') }}<span>Webhook 投递</span></a>
+<div class="card card-border mx-auto max-w-xl bg-base-100 shadow-sm">
+  <div class="card-body items-center p-6 py-12 text-center">
+    <span class="mb-2 flex h-14 w-14 items-center justify-center rounded-full bg-primary/10 text-primary">
+      {{ icon('issue', 'h-7 w-7') }}
+    </span>
+    <p class="font-mono text-3xl font-semibold tracking-tight text-base-content/30">404</p>
+    <h1 class="card-title mt-1 justify-center text-xl">页面未找到</h1>
+    <p class="mt-2 text-sm leading-6 text-base-content/70">{{ message or '请求的资源不存在或已被删除。' }}</p>
+    <div class="card-actions mt-4 flex-wrap items-center justify-center gap-2">
+      <a class="btn btn-primary btn-sm gap-1.5" href="/">{{ icon('arrow-left') }}<span>回公司列表</span></a>
+      <a class="btn btn-ghost btn-sm gap-1.5" href="/deliveries">{{ icon('webhook') }}<span>Webhook 投递</span></a>
+    </div>
   </div>
 </div>
 {% endblock %}

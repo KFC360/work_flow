@@ -317,7 +317,7 @@ def test_issue_detail_two_column_layout_and_markdown(client: TestClient, db: Ses
     assert ids.index("task-title") < ids.index("log-title")
     assert text.count('id="issue-log"') == 1
 
-    assert '<div class="gw-markdown">' in text
+    assert '<div class="md-content">' in text
     assert "<h3>正文标题</h3>" in text
     assert "<strong>粗体</strong>" in text
     assert "<em>斜体</em>" in text
@@ -418,3 +418,98 @@ def test_login_page_markup(client: TestClient, db: Session) -> None:
     assert 'aria-invalid="true"' in resp.text
     assert "autofocus" in resp.text
     assert 'value="admin"' in resp.text
+
+
+def test_head_assets_use_daisyui5(client: TestClient) -> None:
+    resp = client.get("/login")
+    assert resp.status_code == 200
+    text = resp.text
+    assert "daisyui@5.7.50" in text
+    assert "themes.css" in text
+    assert "@tailwindcss/browser@4" in text
+    assert 'data-theme="corporate"' in text
+    assert "daisyui@4" not in text
+    assert "cdn.tailwindcss.com" not in text
+    assert "tailwind.config" not in text
+    assert "--gw-" not in text
+
+
+def test_templates_have_no_legacy_shell() -> None:
+    template_root = Path(__file__).resolve().parents[1] / "app/templates"
+    legacy_tokens = [
+        "gw-card",
+        "gw-table",
+        "gw-nav-link",
+        "gw-markdown",
+        "font-mono-data",
+        "--gw-",
+    ]
+    for path in template_root.rglob("*.html"):
+        content = path.read_text(encoding="utf-8")
+        for token in legacy_tokens:
+            assert token not in content, f"{path} still contains {token}"
+
+
+def test_pages_use_daisyui_components(client: TestClient, db: Session) -> None:
+    _login(client, db)
+    company, repo = _seed_company_repo(db)
+    issue = _seed_issue(db, repo, number=11, status="recorded", kind="feature", title="组件页")
+
+    resp = client.get("/")
+    assert resp.status_code == 200
+    for marker in (
+        'class="navbar',
+        'class="menu ',
+        'class="table ',
+        'class="card ',
+        "<footer",
+    ):
+        assert marker in resp.text
+
+    resp = client.get(f"/companies/{company.id}")
+    assert 'class="breadcrumbs' in resp.text
+    assert 'class="table ' in resp.text
+
+    resp = client.get(f"/repos/{repo.id}")
+    assert 'class="card ' in resp.text
+    assert 'class="stats ' in resp.text
+    assert 'class="stat"' in resp.text
+
+    resp = client.get(f"/issues/{issue.id}")
+    assert 'class="card ' in resp.text
+    assert "bg-neutral" in resp.text
+    assert "text-neutral-content" in resp.text
+
+    resp = client.get(f"/companies/{company.id}?page=2")
+    assert 'class="card ' in resp.text
+    assert "card-title" in resp.text
+    assert "card-actions" in resp.text
+
+
+def test_forms_use_daisyui5(client: TestClient, db: Session) -> None:
+    resp = client.get("/login")
+    assert resp.status_code == 200
+    assert 'class="fieldset' in resp.text
+    assert 'class="label' in resp.text
+    assert 'class="input ' in resp.text
+
+    _login(client, db)
+    _company, repo = _seed_company_repo(db)
+
+    resp = client.get(f"/repos/{repo.id}")
+    assert resp.status_code == 200
+    assert 'class="fieldset' in resp.text
+    assert 'name="local_path"' in resp.text
+    assert 'name="doc_dir"' in resp.text
+    assert "input-bordered" not in resp.text
+
+    resp = client.get(f"/repos/{repo.id}/issues")
+    assert resp.status_code == 200
+    assert 'class="select ' in resp.text
+    assert "select-bordered" not in resp.text
+
+    resp = client.get("/settings")
+    assert resp.status_code == 200
+    assert 'class="fieldset' in resp.text
+    assert 'class="card card-border' in resp.text
+    assert "radio radio-primary" in resp.text

@@ -3,7 +3,7 @@
 {% from "macros/icons.html" import icon %}
 {% block title %}{{ repo.github_full_name }} · 仓库{% endblock %}
 
-{% macro dash() -%}<span class="text-slate-400">—</span>{%- endmacro %}
+{% macro dash() -%}<span class="text-base-content/40">—</span>{%- endmacro %}
 
 {% block page_header %}
 {% call page_header(repo.github_full_name, 'GitHub 资料只读同步；服务器项目路径与文档目录在本页配置。', '仓库') %}
@@ -21,7 +21,7 @@
 
 <div class="mb-4 flex flex-wrap items-center gap-2">
   <span class="badge badge-sm badge-ghost gap-1 whitespace-nowrap">{{ icon(visibility_icon, 'h-3.5 w-3.5') }}<span>{{ visibility_label }}</span></span>
-  <span class="badge badge-sm badge-ghost gap-1 whitespace-nowrap">{{ icon('branch', 'h-3.5 w-3.5') }}<span class="font-mono-data">{{ repo.default_branch }}</span></span>
+  <span class="badge badge-sm badge-ghost gap-1 whitespace-nowrap">{{ icon('branch', 'h-3.5 w-3.5') }}<span class="font-mono">{{ repo.default_branch }}</span></span>
   {% if repo.sync_error %}
   <span class="badge badge-sm badge-error gap-1 whitespace-nowrap">{{ icon('alert-triangle', 'h-3.5 w-3.5') }}<span>同步失败</span></span>
   {% elif repo.synced_at %}
@@ -65,238 +65,251 @@
 
 {% set first_error = 'local_path' if field_errors.local_path else ('doc_dir' if field_errors.doc_dir else '') %}
 <div class="grid gap-6 lg:grid-cols-3">
-  <section class="gw-card order-1 p-5 lg:order-2 lg:col-span-1" aria-labelledby="local-config-title">
-    <h2 id="local-config-title" class="mb-4 flex items-center gap-2 text-base font-semibold text-slate-900">
-      {{ icon('settings', 'h-5 w-5 text-slate-500') }}<span>本地配置</span>
-    </h2>
-    <form method="post" action="/repos/{{ repo.id }}" class="space-y-4">
-      <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
-      <div>
-        <label class="mb-1 block text-sm font-medium text-slate-800" for="local_path">服务器项目路径</label>
-        <input
-          id="local_path"
-          name="local_path"
-          class="input input-bordered w-full font-mono-data text-sm {% if field_errors.local_path %}input-error{% endif %}"
-          value="{{ local_path }}"
-          aria-describedby="local_path-help{% if field_errors.local_path %} local_path-error{% endif %}"
-          {% if field_errors.local_path %}aria-invalid="true"{% endif %}
-          {% if form_disabled %}disabled{% endif %}
-          {% if first_error == 'local_path' %}autofocus{% endif %}
-        />
-        <p id="local_path-help" class="mt-1 text-xs leading-5 text-slate-500">须为已 clone 的 git 顶层绝对路径；origin 必须匹配 <code>{{ repo.github_full_name }}</code>。</p>
-        {% if field_errors.local_path %}
-        <p id="local_path-error" class="mt-1 text-sm text-red-600">{{ field_errors.local_path }}</p>
-        {% endif %}
-      </div>
-      <div>
-        <label class="mb-1 block text-sm font-medium text-slate-800" for="doc_dir">文档目录</label>
-        <input
-          id="doc_dir"
-          name="doc_dir"
-          class="input input-bordered w-full font-mono-data text-sm {% if field_errors.doc_dir %}input-error{% endif %}"
-          value="{{ doc_dir }}"
-          aria-describedby="doc_dir-help{% if field_errors.doc_dir %} doc_dir-error{% endif %}"
-          {% if field_errors.doc_dir %}aria-invalid="true"{% endif %}
-          {% if form_disabled %}disabled{% endif %}
-          {% if first_error == 'doc_dir' %}autofocus{% endif %}
-        />
-        <p id="doc_dir-help" class="mt-1 text-xs leading-5 text-slate-500">相对路径，默认 <code>docs</code>；基石入口为 <code>{doc_dir}/README.md</code>。</p>
-        {% if field_errors.doc_dir %}
-        <p id="doc_dir-error" class="mt-1 text-sm text-red-600">{{ field_errors.doc_dir }}</p>
-        {% endif %}
-      </div>
-      <button type="submit" class="btn btn-primary btn-sm gap-1.5" data-gw-submit {% if form_disabled %}disabled{% endif %}>
-        {{ icon('check') }}<span>保存</span>
-      </button>
-    </form>
-  </section>
-
-  <section class="gw-card order-2 p-5 lg:order-1 lg:col-span-2" aria-labelledby="github-meta-title">
-    <div class="mb-4 flex flex-wrap items-center justify-between gap-2">
-      <h2 id="github-meta-title" class="flex items-center gap-2 text-base font-semibold text-slate-900">
-        {{ icon('repo', 'h-5 w-5 text-slate-500') }}<span>GitHub 资料</span>
+  <section class="card card-border order-1 bg-base-100 shadow-sm lg:order-2 lg:col-span-1" aria-labelledby="local-config-title">
+    <div class="card-body p-5">
+      <h2 id="local-config-title" class="card-title text-base">
+        {{ icon('settings', 'h-5 w-5 text-base-content/60') }}<span>本地配置</span>
       </h2>
-      <form method="post" action="/repos/{{ repo.id }}/resync" class="inline-flex">
+      <form method="post" action="/repos/{{ repo.id }}" class="space-y-4">
         <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
-        <button type="submit" class="btn btn-outline btn-sm gap-1.5" data-gw-submit>{{ icon('refresh') }}<span>重新同步</span></button>
+        <fieldset class="fieldset">
+          <legend class="fieldset-legend">路径设置</legend>
+
+          <label class="label" for="local_path">服务器项目路径</label>
+          <input
+            id="local_path"
+            name="local_path"
+            class="input w-full font-mono text-sm {% if field_errors.local_path %}input-error{% endif %}"
+            value="{{ local_path }}"
+            aria-describedby="local_path-help{% if field_errors.local_path %} local_path-error{% endif %}"
+            {% if field_errors.local_path %}aria-invalid="true"{% endif %}
+            {% if form_disabled %}disabled{% endif %}
+            {% if first_error == 'local_path' %}autofocus{% endif %}
+          />
+          <p id="local_path-help" class="label text-xs leading-5 text-base-content/60">须为已 clone 的 git 顶层绝对路径；origin 必须匹配 <code class="rounded bg-base-200 px-1 py-0.5 font-mono">{{ repo.github_full_name }}</code>。</p>
+          {% if field_errors.local_path %}
+          <p id="local_path-error" class="text-sm text-error">{{ field_errors.local_path }}</p>
+          {% endif %}
+
+          <label class="label" for="doc_dir">文档目录</label>
+          <input
+            id="doc_dir"
+            name="doc_dir"
+            class="input w-full font-mono text-sm {% if field_errors.doc_dir %}input-error{% endif %}"
+            value="{{ doc_dir }}"
+            aria-describedby="doc_dir-help{% if field_errors.doc_dir %} doc_dir-error{% endif %}"
+            {% if field_errors.doc_dir %}aria-invalid="true"{% endif %}
+            {% if form_disabled %}disabled{% endif %}
+            {% if first_error == 'doc_dir' %}autofocus{% endif %}
+          />
+          <p id="doc_dir-help" class="label text-xs leading-5 text-base-content/60">相对路径，默认 <code class="rounded bg-base-200 px-1 py-0.5 font-mono">docs</code>；基石入口为 <code class="rounded bg-base-200 px-1 py-0.5 font-mono">{doc_dir}/README.md</code>。</p>
+          {% if field_errors.doc_dir %}
+          <p id="doc_dir-error" class="text-sm text-error">{{ field_errors.doc_dir }}</p>
+          {% endif %}
+        </fieldset>
+        <button type="submit" class="btn btn-primary btn-sm gap-1.5" data-gw-submit {% if form_disabled %}disabled{% endif %}>
+          {{ icon('check') }}<span>保存</span>
+        </button>
       </form>
     </div>
+  </section>
 
-    {% if repo.archived or repo.disabled %}
-    <div class="alert alert-warning mb-4 flex items-start gap-2 text-sm" role="status">
-      {{ icon('archive' if repo.archived else 'slash', 'h-5 w-5 shrink-0') }}
-      <div class="min-w-0">
-        <p>
-          {% if repo.archived and repo.disabled %}该仓库已在 GitHub 归档并禁用。
-          {% elif repo.archived %}该仓库已在 GitHub 归档（只读）。同步可能失败，写文档 / 生成代码前请确认仓库状态。
-          {% else %}该仓库已在 GitHub 禁用。同步与后续流程可能失败。
+  <section class="card card-border order-2 bg-base-100 shadow-sm lg:order-1 lg:col-span-2" aria-labelledby="github-meta-title">
+    <div class="card-body p-5">
+      <div class="mb-4 flex flex-wrap items-center justify-between gap-2">
+        <h2 id="github-meta-title" class="card-title text-base">
+          {{ icon('repo', 'h-5 w-5 text-base-content/60') }}<span>GitHub 资料</span>
+        </h2>
+        <form method="post" action="/repos/{{ repo.id }}/resync" class="inline-flex">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+          <button type="submit" class="btn btn-outline btn-sm gap-1.5" data-gw-submit>{{ icon('refresh') }}<span>重新同步</span></button>
+        </form>
+      </div>
+
+      {% if repo.archived or repo.disabled %}
+      <div class="alert alert-warning mb-4 flex items-start gap-2 text-sm" role="status">
+        {{ icon('archive' if repo.archived else 'slash', 'h-5 w-5 shrink-0') }}
+        <div class="min-w-0">
+          <p>
+            {% if repo.archived and repo.disabled %}该仓库已在 GitHub 归档并禁用。
+            {% elif repo.archived %}该仓库已在 GitHub 归档（只读）。同步可能失败，写文档 / 生成代码前请确认仓库状态。
+            {% else %}该仓库已在 GitHub 禁用。同步与后续流程可能失败。
+            {% endif %}
+          </p>
+          <p class="mt-1 text-xs text-warning-content/80">本页不改变任务按钮条件，实际结果以任务日志为准。</p>
+        </div>
+      </div>
+      {% endif %}
+
+      <p class="mb-4 break-words text-sm leading-6 {% if repo.description %}text-base-content{% else %}text-base-content/60{% endif %}">{{ repo.description or '无描述' }}</p>
+
+      <dl class="grid gap-x-6 gap-y-3 text-sm sm:grid-cols-2">
+        <div class="min-w-0">
+          <dt class="text-xs text-base-content/60">所属公司</dt>
+          <dd class="mt-0.5 text-base-content">
+            {% if company %}
+            <a class="link link-primary font-medium" href="/companies/{{ company.id }}">{{ company.name }}</a>
+            {% if company.name != company.login %}<span class="ml-1 text-xs text-base-content/60">@{{ company.login }}</span>{% endif %}
+            {% else %}{{ dash() }}{% endif %}
+          </dd>
+        </div>
+        <div class="min-w-0">
+          <dt class="text-xs text-base-content/60">短名</dt>
+          <dd class="mt-0.5 break-words font-mono text-base-content">{% if repo.name %}{{ repo.name }}{% else %}{{ dash() }}{% endif %}</dd>
+        </div>
+        <div class="min-w-0">
+          <dt class="text-xs text-base-content/60">GitHub 仓库 ID</dt>
+          <dd class="mt-0.5 break-all font-mono text-base-content">{% if repo.github_repo_id is not none %}{{ repo.github_repo_id }}{% else %}{{ dash() }}{% endif %}</dd>
+        </div>
+        <div class="min-w-0">
+          <dt class="text-xs text-base-content/60">完整名称</dt>
+          <dd class="mt-0.5 break-all font-mono text-base-content">{% if repo.github_full_name %}{{ repo.github_full_name }}{% else %}{{ dash() }}{% endif %}</dd>
+        </div>
+        <div class="min-w-0 sm:col-span-2">
+          <dt class="text-xs text-base-content/60">收录于</dt>
+          <dd class="mt-0.5 font-mono text-xs text-base-content/70"{% if repo.created_at %} title="{{ repo.created_at | gw_iso }}"{% endif %}>{% if repo.created_at %}{{ repo.created_at | gw_time }} UTC{% else %}{{ dash() }}{% endif %}</dd>
+        </div>
+      </dl>
+
+      <div class="mt-5 overflow-x-auto">
+        <div class="stats stats-vertical bg-base-200 sm:stats-horizontal">
+          <div class="stat">
+            <div class="stat-title text-xs">主语言</div>
+            <div class="stat-value break-words text-lg text-base-content">{% if repo.language %}{{ repo.language }}{% else %}{{ dash() }}{% endif %}</div>
+          </div>
+          <div class="stat">
+            <div class="stat-title flex items-center gap-1 text-xs">{{ icon('star', 'h-3.5 w-3.5') }}<span>星标</span></div>
+            <div class="stat-value text-lg tabular-nums text-base-content">{% if repo.stargazers_count is not none %}{{ repo.stargazers_count | gw_count }}{% else %}{{ dash() }}{% endif %}</div>
+          </div>
+          <div class="stat">
+            <div class="stat-title flex items-center gap-1 text-xs">{{ icon('fork', 'h-3.5 w-3.5') }}<span>Fork</span></div>
+            <div class="stat-value text-lg tabular-nums text-base-content">{% if repo.forks_count is not none %}{{ repo.forks_count | gw_count }}{% else %}{{ dash() }}{% endif %}</div>
+          </div>
+          <div class="stat">
+            <div class="stat-title flex items-center gap-1 text-xs">{{ icon('issue', 'h-3.5 w-3.5') }}<span>GitHub 开放 Issue</span></div>
+            <div class="stat-value text-lg tabular-nums text-base-content">
+              {% if repo.open_issues_count is not none %}
+                {% if repo.html_url %}<a class="link link-primary" href="{{ repo.html_url }}/issues" target="_blank" rel="noopener" aria-label="在 GitHub 查看开放 Issue">{{ repo.open_issues_count | gw_count }}</a>{% else %}{{ repo.open_issues_count | gw_count }}{% endif %}
+              {% else %}{{ dash() }}{% endif %}
+            </div>
+          </div>
+          <div class="stat">
+            <div class="stat-title flex items-center gap-1 text-xs">{{ icon('calendar', 'h-3.5 w-3.5') }}<span>最近推送</span></div>
+            <div class="stat-value font-mono text-sm text-base-content"{% if repo.pushed_at %} title="{{ repo.pushed_at | gw_iso }}"{% endif %}>{% if repo.pushed_at %}{{ repo.pushed_at | gw_time }} UTC{% else %}{{ dash() }}{% endif %}</div>
+          </div>
+          <div class="stat">
+            <div class="stat-title flex items-center gap-1 text-xs">{{ icon('scale', 'h-3.5 w-3.5') }}<span>许可证</span></div>
+            <div class="stat-value break-words text-lg text-base-content"{% if repo.license_name and repo.license_name != repo.license_spdx %} title="{{ repo.license_name }}"{% endif %}>
+              {% if repo.license_spdx or repo.license_name %}{{ repo.license_spdx or repo.license_name }}{% else %}{{ dash() }}{% endif %}
+            </div>
+          </div>
+        </div>
+      </div>
+      <p class="mt-2 text-xs leading-5 text-base-content/60">GitHub 的开放 Issue 计数包含 Pull Request；本系统只收录部分 Issue，两个数字不可直接相减。</p>
+
+      <div class="mt-5">
+        <p class="mb-1.5 text-xs text-base-content/60">主题</p>
+        {% if repo.topics %}
+        <div class="flex flex-wrap gap-1.5">
+          {% for topic in repo.topics[:12] %}
+          <span class="badge badge-sm badge-ghost gap-1 whitespace-nowrap">{{ icon('tag', 'h-3 w-3') }}<span>{{ topic }}</span></span>
+          {% endfor %}
+          {% if repo.topics|length > 12 %}
+          <span class="badge badge-sm badge-ghost whitespace-nowrap" title="{{ repo.topics[12:] | join(', ') }}">+{{ repo.topics|length - 12 }}</span>
           {% endif %}
-        </p>
-        <p class="mt-1 text-xs text-amber-800/80">本页不改变任务按钮条件，实际结果以任务日志为准。</p>
-      </div>
-    </div>
-    {% endif %}
-
-    <p class="mb-4 break-words text-sm leading-6 {% if repo.description %}text-slate-700{% else %}text-slate-500{% endif %}">{{ repo.description or '无描述' }}</p>
-
-    <dl class="grid gap-x-6 gap-y-3 text-sm sm:grid-cols-2">
-      <div class="min-w-0">
-        <dt class="text-xs text-slate-500">所属公司</dt>
-        <dd class="mt-0.5 text-slate-900">
-          {% if company %}
-          <a class="link link-hover font-medium text-sky-700" href="/companies/{{ company.id }}">{{ company.name }}</a>
-          {% if company.name != company.login %}<span class="ml-1 text-xs text-slate-500">@{{ company.login }}</span>{% endif %}
-          {% else %}{{ dash() }}{% endif %}
-        </dd>
-      </div>
-      <div class="min-w-0">
-        <dt class="text-xs text-slate-500">短名</dt>
-        <dd class="mt-0.5 break-words font-mono-data text-slate-900">{% if repo.name %}{{ repo.name }}{% else %}{{ dash() }}{% endif %}</dd>
-      </div>
-      <div class="min-w-0">
-        <dt class="text-xs text-slate-500">GitHub 仓库 ID</dt>
-        <dd class="mt-0.5 break-all font-mono-data text-slate-900">{% if repo.github_repo_id is not none %}{{ repo.github_repo_id }}{% else %}{{ dash() }}{% endif %}</dd>
-      </div>
-      <div class="min-w-0">
-        <dt class="text-xs text-slate-500">完整名称</dt>
-        <dd class="mt-0.5 break-all font-mono-data text-slate-900">{% if repo.github_full_name %}{{ repo.github_full_name }}{% else %}{{ dash() }}{% endif %}</dd>
-      </div>
-      <div class="min-w-0 sm:col-span-2">
-        <dt class="text-xs text-slate-500">收录于</dt>
-        <dd class="mt-0.5 font-mono-data text-xs text-slate-700"{% if repo.created_at %} title="{{ repo.created_at | gw_iso }}"{% endif %}>{% if repo.created_at %}{{ repo.created_at | gw_time }} UTC{% else %}{{ dash() }}{% endif %}</dd>
-      </div>
-    </dl>
-
-    <dl class="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-3">
-      <div class="rounded-lg bg-slate-50 px-3 py-2">
-        <dt class="text-xs text-slate-500">主语言</dt>
-        <dd class="mt-1 break-words text-sm font-medium text-slate-900">{% if repo.language %}{{ repo.language }}{% else %}{{ dash() }}{% endif %}</dd>
-      </div>
-      <div class="rounded-lg bg-slate-50 px-3 py-2">
-        <dt class="flex items-center gap-1 text-xs text-slate-500">{{ icon('star', 'h-3.5 w-3.5') }}<span>星标</span></dt>
-        <dd class="mt-1 text-sm font-medium tabular-nums text-slate-900">{% if repo.stargazers_count is not none %}{{ repo.stargazers_count | gw_count }}{% else %}{{ dash() }}{% endif %}</dd>
-      </div>
-      <div class="rounded-lg bg-slate-50 px-3 py-2">
-        <dt class="flex items-center gap-1 text-xs text-slate-500">{{ icon('fork', 'h-3.5 w-3.5') }}<span>Fork</span></dt>
-        <dd class="mt-1 text-sm font-medium tabular-nums text-slate-900">{% if repo.forks_count is not none %}{{ repo.forks_count | gw_count }}{% else %}{{ dash() }}{% endif %}</dd>
-      </div>
-      <div class="rounded-lg bg-slate-50 px-3 py-2">
-        <dt class="flex items-center gap-1 text-xs text-slate-500">{{ icon('issue', 'h-3.5 w-3.5') }}<span>GitHub 开放 Issue</span></dt>
-        <dd class="mt-1 text-sm font-medium tabular-nums text-slate-900">
-          {% if repo.open_issues_count is not none %}
-            {% if repo.html_url %}<a class="link link-hover text-sky-700" href="{{ repo.html_url }}/issues" target="_blank" rel="noopener" aria-label="在 GitHub 查看开放 Issue">{{ repo.open_issues_count | gw_count }}</a>{% else %}{{ repo.open_issues_count | gw_count }}{% endif %}
-          {% else %}{{ dash() }}{% endif %}
-        </dd>
-      </div>
-      <div class="rounded-lg bg-slate-50 px-3 py-2">
-        <dt class="flex items-center gap-1 text-xs text-slate-500">{{ icon('calendar', 'h-3.5 w-3.5') }}<span>最近推送</span></dt>
-        <dd class="mt-1 font-mono-data text-xs text-slate-900"{% if repo.pushed_at %} title="{{ repo.pushed_at | gw_iso }}"{% endif %}>{% if repo.pushed_at %}{{ repo.pushed_at | gw_time }} UTC{% else %}{{ dash() }}{% endif %}</dd>
-      </div>
-      <div class="rounded-lg bg-slate-50 px-3 py-2">
-        <dt class="flex items-center gap-1 text-xs text-slate-500">{{ icon('scale', 'h-3.5 w-3.5') }}<span>许可证</span></dt>
-        <dd class="mt-1 break-words text-sm font-medium text-slate-900"{% if repo.license_name and repo.license_name != repo.license_spdx %} title="{{ repo.license_name }}"{% endif %}>
-          {% if repo.license_spdx or repo.license_name %}{{ repo.license_spdx or repo.license_name }}{% else %}{{ dash() }}{% endif %}
-        </dd>
-      </div>
-    </dl>
-    <p class="mt-2 text-xs leading-5 text-slate-500">GitHub 的开放 Issue 计数包含 Pull Request；本系统只收录部分 Issue，两个数字不可直接相减。</p>
-
-    <div class="mt-5">
-      <p class="mb-1.5 text-xs text-slate-500">主题</p>
-      {% if repo.topics %}
-      <div class="flex flex-wrap gap-1.5">
-        {% for topic in repo.topics[:12] %}
-        <span class="badge badge-sm badge-ghost gap-1 whitespace-nowrap">{{ icon('tag', 'h-3 w-3') }}<span>{{ topic }}</span></span>
-        {% endfor %}
-        {% if repo.topics|length > 12 %}
-        <span class="badge badge-sm badge-ghost whitespace-nowrap" title="{{ repo.topics[12:] | join(', ') }}">+{{ repo.topics|length - 12 }}</span>
+        </div>
+        {% else %}
+        {{ dash() }}
         {% endif %}
       </div>
-      {% else %}
-      {{ dash() }}
-      {% endif %}
-    </div>
 
-    <dl class="mt-5 grid gap-3 text-sm sm:grid-cols-3">
-      <div class="min-w-0">
-        <dt class="text-xs text-slate-500">GitHub 仓库</dt>
-        <dd class="mt-1 break-all">
-          {% if repo.html_url %}
-          <a class="link link-hover inline-flex items-start gap-1 font-mono-data text-xs text-sky-700" href="{{ repo.html_url }}" target="_blank" rel="noopener">{{ icon('link', 'h-3.5 w-3.5 shrink-0') }}<span>{{ repo.html_url }}</span></a>
-          {% else %}{{ dash() }}{% endif %}
-        </dd>
-      </div>
-      <div class="min-w-0">
-        <dt class="text-xs text-slate-500">项目主页</dt>
-        <dd class="mt-1 break-all">
-          {% if repo.homepage %}
-            {% if repo.homepage.startswith('http://') or repo.homepage.startswith('https://') %}
-            <a class="link link-hover inline-flex items-start gap-1 font-mono-data text-xs text-sky-700" href="{{ repo.homepage }}" target="_blank" rel="noopener">{{ icon('home', 'h-3.5 w-3.5 shrink-0') }}<span>{{ repo.homepage }}</span></a>
-            {% else %}
-            <span class="break-all font-mono-data text-xs text-slate-700">{{ repo.homepage }}</span>
-            {% endif %}
-          {% else %}{{ dash() }}{% endif %}
-        </dd>
-      </div>
-      <div class="min-w-0">
-        <dt class="text-xs text-slate-500">GitHub Issues</dt>
-        <dd class="mt-1 break-all">
-          {% if repo.html_url %}
-          <a class="link link-hover inline-flex items-start gap-1 font-mono-data text-xs text-sky-700" href="{{ repo.html_url }}/issues" target="_blank" rel="noopener">{{ icon('issue', 'h-3.5 w-3.5 shrink-0') }}<span>{{ repo.html_url }}/issues</span></a>
-          {% else %}{{ dash() }}{% endif %}
-        </dd>
-      </div>
-    </dl>
+      <dl class="mt-5 grid gap-3 text-sm sm:grid-cols-3">
+        <div class="min-w-0">
+          <dt class="text-xs text-base-content/60">GitHub 仓库</dt>
+          <dd class="mt-1 break-all">
+            {% if repo.html_url %}
+            <a class="link link-primary inline-flex items-start gap-1 font-mono text-xs" href="{{ repo.html_url }}" target="_blank" rel="noopener">{{ icon('link', 'h-3.5 w-3.5 shrink-0') }}<span>{{ repo.html_url }}</span></a>
+            {% else %}{{ dash() }}{% endif %}
+          </dd>
+        </div>
+        <div class="min-w-0">
+          <dt class="text-xs text-base-content/60">项目主页</dt>
+          <dd class="mt-1 break-all">
+            {% if repo.homepage %}
+              {% if repo.homepage.startswith('http://') or repo.homepage.startswith('https://') %}
+              <a class="link link-primary inline-flex items-start gap-1 font-mono text-xs" href="{{ repo.homepage }}" target="_blank" rel="noopener">{{ icon('home', 'h-3.5 w-3.5 shrink-0') }}<span>{{ repo.homepage }}</span></a>
+              {% else %}
+              <span class="break-all font-mono text-xs text-base-content/70">{{ repo.homepage }}</span>
+              {% endif %}
+            {% else %}{{ dash() }}{% endif %}
+          </dd>
+        </div>
+        <div class="min-w-0">
+          <dt class="text-xs text-base-content/60">GitHub Issues</dt>
+          <dd class="mt-1 break-all">
+            {% if repo.html_url %}
+            <a class="link link-primary inline-flex items-start gap-1 font-mono text-xs" href="{{ repo.html_url }}/issues" target="_blank" rel="noopener">{{ icon('issue', 'h-3.5 w-3.5 shrink-0') }}<span>{{ repo.html_url }}/issues</span></a>
+            {% else %}{{ dash() }}{% endif %}
+          </dd>
+        </div>
+      </dl>
 
-    <div class="mt-5 border-t border-slate-200 pt-5">
-      <h3 class="text-sm font-semibold text-slate-900">本系统</h3>
-      <div class="mt-3 grid grid-cols-3 gap-2">
-        <a class="group rounded-lg border border-slate-200 bg-white px-3 py-3 transition-colors hover:border-sky-300 hover:bg-sky-50/60 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-600" href="{{ summary_links.unfinished }}">
-          <span class="block text-xs leading-5 text-slate-500">未结束功能迭代</span>
-          <span class="mt-1 block text-2xl font-semibold tabular-nums text-slate-900 group-hover:text-sky-700">{{ issue_summary.feature_unfinished }}</span>
+      <div class="divider my-5"></div>
+
+      <h3 class="text-sm font-semibold text-base-content">本系统</h3>
+      <div class="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-3">
+        <a class="card card-border bg-base-100 transition-colors hover:bg-base-200" href="{{ summary_links.unfinished }}">
+          <div class="card-body p-3">
+            <span class="text-xs leading-5 text-base-content/60">未结束功能迭代</span>
+            <span class="text-2xl font-semibold tabular-nums text-base-content">{{ issue_summary.feature_unfinished }}</span>
+          </div>
         </a>
-        <a class="group rounded-lg border border-slate-200 bg-white px-3 py-3 transition-colors hover:border-sky-300 hover:bg-sky-50/60 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-600" href="{{ summary_links.support }}">
-          <span class="block text-xs leading-5 text-slate-500">人工介入待处理</span>
-          <span class="mt-1 block text-2xl font-semibold tabular-nums text-slate-900 group-hover:text-sky-700">{{ issue_summary.support_open }}</span>
+        <a class="card card-border bg-base-100 transition-colors hover:bg-base-200" href="{{ summary_links.support }}">
+          <div class="card-body p-3">
+            <span class="text-xs leading-5 text-base-content/60">人工介入待处理</span>
+            <span class="text-2xl font-semibold tabular-nums text-base-content">{{ issue_summary.support_open }}</span>
+          </div>
         </a>
-        <a class="group rounded-lg border border-slate-200 bg-white px-3 py-3 transition-colors hover:border-sky-300 hover:bg-sky-50/60 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-600" href="{{ summary_links.failed }}">
-          <span class="block text-xs leading-5 text-slate-500">失败</span>
-          <span class="mt-1 block text-2xl font-semibold tabular-nums {% if issue_summary.failed %}text-red-700{% else %}text-slate-900{% endif %} group-hover:text-sky-700">{{ issue_summary.failed }}</span>
+        <a class="card card-border bg-base-100 transition-colors hover:bg-base-200" href="{{ summary_links.failed }}">
+          <div class="card-body p-3">
+            <span class="text-xs leading-5 text-base-content/60">失败</span>
+            <span class="text-2xl font-semibold tabular-nums {% if issue_summary.failed %}text-error{% else %}text-base-content{% endif %}">{{ issue_summary.failed }}</span>
+          </div>
         </a>
       </div>
-      <p class="mt-2 text-xs leading-5 text-slate-500">仅统计 open、未删除的本系统 Issue；三类可重叠。</p>
+      <p class="mt-2 text-xs leading-5 text-base-content/60">仅统计 open、未删除的本系统 Issue；三类可重叠。</p>
 
       <dl class="mt-4 space-y-3 text-sm">
         <div class="grid grid-cols-1 gap-1 sm:grid-cols-[7rem_1fr]">
-          <dt class="text-xs text-slate-500 sm:pt-0.5">服务器路径</dt>
+          <dt class="text-xs text-base-content/60 sm:pt-0.5">服务器路径</dt>
           <dd class="min-w-0">
             {% if repo.local_path %}
             {{ badge('neutral', '已填写', 'server') }}
-            <span class="mt-1 block break-all font-mono-data text-xs leading-5 text-slate-700 line-clamp-2" title="{{ repo.local_path }}">{{ repo.local_path }}</span>
+            <span class="mt-1 block break-all font-mono text-xs leading-5 text-base-content/70 line-clamp-2" title="{{ repo.local_path }}">{{ repo.local_path }}</span>
             {% else %}
             {{ badge('neutral', '未填写') }}
             {% endif %}
           </dd>
         </div>
         <div class="grid grid-cols-1 gap-1 sm:grid-cols-[7rem_1fr]">
-          <dt class="text-xs text-slate-500 sm:pt-0.5">origin</dt>
+          <dt class="text-xs text-base-content/60 sm:pt-0.5">origin</dt>
           <dd class="min-w-0">
             {% if origin.state == 'none' %}
             {{ badge('neutral', '未填写') }}
             {% elif origin.state == 'match' %}
             {{ badge('success', '匹配', 'check-circle') }}
-            {% if origin.origin %}<span class="mt-1 block break-all font-mono-data text-xs text-slate-600">{{ origin.origin }}</span>{% endif %}
+            {% if origin.origin %}<span class="mt-1 block break-all font-mono text-xs text-base-content/60">{{ origin.origin }}</span>{% endif %}
             {% elif origin.state == 'mismatch' %}
             {{ badge('danger', '不一致', 'alert-triangle') }}
-            <span class="mt-1 block break-all text-xs leading-5 text-slate-700">实际：<code class="font-mono-data">{{ origin.origin or '—' }}</code>；期望：<code class="font-mono-data">{{ repo.github_full_name }}</code></span>
+            <span class="mt-1 block break-all text-xs leading-5 text-base-content/70">实际：<code class="font-mono">{{ origin.origin or '—' }}</code>；期望：<code class="font-mono">{{ repo.github_full_name }}</code></span>
             {% else %}
             {{ badge('warning', '无法校验', 'help-circle') }}
-            <span class="mt-1 block text-xs leading-5 text-slate-600">{{ origin.detail or '路径不可用' }}</span>
+            <span class="mt-1 block text-xs leading-5 text-base-content/60">{{ origin.detail or '路径不可用' }}</span>
             {% endif %}
           </dd>
         </div>
         <div class="grid grid-cols-1 gap-1 sm:grid-cols-[7rem_1fr]">
-          <dt class="text-xs text-slate-500 sm:pt-0.5">基石</dt>
+          <dt class="text-xs text-base-content/60 sm:pt-0.5">基石</dt>
           <dd class="min-w-0">
             {% if foundation.state == 'no_path' %}
             {{ badge('neutral', '未填写路径，无法检查') }}
@@ -304,28 +317,28 @@
             {{ badge('neutral', '无法检查（路径不可用）') }}
             {% elif foundation.state == 'exists' %}
             {{ badge('success', '存在', 'check-circle') }}
-            <span class="mt-1 block break-all font-mono-data text-xs leading-5 text-slate-700">{{ foundation.rel_path }} @ {{ foundation.ref }}</span>
-            {% if origin.state == 'mismatch' %}<span class="mt-1 block text-xs leading-5 text-amber-700">当前路径 origin 与仓库不一致，结果仅供参考。</span>{% endif %}
+            <span class="mt-1 block break-all font-mono text-xs leading-5 text-base-content/70">{{ foundation.rel_path }} @ {{ foundation.ref }}</span>
+            {% if origin.state == 'mismatch' %}<span class="mt-1 block text-xs leading-5 text-warning">当前路径 origin 与仓库不一致，结果仅供参考。</span>{% endif %}
             {% elif foundation.state == 'missing' %}
             {{ badge('warning', '未找到', 'alert-triangle') }}
-            <span class="mt-1 block break-all font-mono-data text-xs leading-5 text-slate-700">{{ foundation.rel_path }} @ {{ foundation.ref }}</span>
-            <span class="mt-1 block text-xs leading-5 text-slate-600">GET 不 fetch；可能尚未 fetch 或基石确实缺失。</span>
-            {% if origin.state == 'mismatch' %}<span class="mt-1 block text-xs leading-5 text-amber-700">当前路径 origin 与仓库不一致，结果仅供参考。</span>{% endif %}
+            <span class="mt-1 block break-all font-mono text-xs leading-5 text-base-content/70">{{ foundation.rel_path }} @ {{ foundation.ref }}</span>
+            <span class="mt-1 block text-xs leading-5 text-base-content/60">GET 不 fetch；可能尚未 fetch 或基石确实缺失。</span>
+            {% if origin.state == 'mismatch' %}<span class="mt-1 block text-xs leading-5 text-warning">当前路径 origin 与仓库不一致，结果仅供参考。</span>{% endif %}
             {% else %}
             {{ badge('warning', '无法检查（路径不可用）') }}
             {% endif %}
           </dd>
         </div>
         <div class="grid grid-cols-1 gap-1 sm:grid-cols-[7rem_1fr]">
-          <dt class="text-xs text-slate-500 sm:pt-0.5">同步</dt>
+          <dt class="text-xs text-base-content/60 sm:pt-0.5">同步</dt>
           <dd class="min-w-0">
             {% if repo.sync_error %}
-            <span class="text-xs leading-5 text-amber-800" title="{{ repo.sync_error }}">最近失败：{{ repo.sync_error.split('\n')[0] | truncate(80, true, '…') }}</span>
-            {% if repo.synced_at %}<span class="mt-1 block text-xs leading-5 text-slate-600">上次成功：{{ repo.synced_at | gw_time }} UTC</span>{% endif %}
+            <span class="text-xs leading-5 text-warning" title="{{ repo.sync_error }}">最近失败：{{ repo.sync_error.split('\n')[0] | truncate(80, true, '…') }}</span>
+            {% if repo.synced_at %}<span class="mt-1 block text-xs leading-5 text-base-content/60">上次成功：{{ repo.synced_at | gw_time }} UTC</span>{% endif %}
             {% elif repo.synced_at %}
-            <span class="text-xs leading-5 text-emerald-700">成功于 {{ repo.synced_at | gw_time }} UTC</span>
+            <span class="text-xs leading-5 text-success">成功于 {{ repo.synced_at | gw_time }} UTC</span>
             {% else %}
-            <span class="text-xs leading-5 text-slate-500">尚未同步</span>
+            <span class="text-xs leading-5 text-base-content/60">尚未同步</span>
             {% endif %}
           </dd>
         </div>

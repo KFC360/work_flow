@@ -5,7 +5,7 @@
 
 {% block page_header %}
 {% call page_header(company.name, '该所有者下的仓库与同步状态。服务器路径未填写时，Issue 可以浏览，但无法编写文档或生成代码。', '公司') %}
-  <span class="text-sm text-slate-500">共 <span class="font-mono-data text-slate-900">{{ total }}</span> 个仓库</span>
+  <span class="text-sm text-base-content/70">共 <span class="font-mono text-base-content" data-count="total">{{ total }}</span> 个仓库</span>
 {% endcall %}
 {% endblock %}
 
@@ -13,56 +13,58 @@
 {% if not rows %}
   {{ empty_state('该公司下还没有仓库', '收到该公司的 Issue Webhook 后会自动出现。', 'repo', '/deliveries', '查看 Webhook 投递') }}
 {% else %}
-<div class="gw-card overflow-hidden">
-  <div class="overflow-x-auto">
-    <table class="gw-table table min-w-[56rem]">
-      <thead>
-        <tr>
-          <th scope="col">仓库</th>
-          <th scope="col">默认分支</th>
-          <th scope="col">服务器路径</th>
-          <th scope="col" class="text-right">开放 Issue</th>
-          <th scope="col" class="text-right">操作</th>
-        </tr>
-      </thead>
-      <tbody>
-        {% for row in rows %}
-        <tr>
-          <td>
-            <div class="flex items-center gap-2">
-              <a class="link link-hover font-mono-data text-sm font-medium text-slate-900" href="/repos/{{ row.repo.id }}">{{ row.repo.github_full_name }}</a>
-              {% if row.repo.html_url %}
-              <a class="btn btn-ghost btn-xs" href="{{ row.repo.html_url }}" target="_blank" rel="noopener" aria-label="在 GitHub 打开 {{ row.repo.github_full_name }}" title="在 GitHub 打开">{{ icon('external-link') }}</a>
+<div class="card card-border overflow-hidden bg-base-100 shadow-sm">
+  <div class="card-body p-0">
+    <div class="overflow-x-auto">
+      <table class="table min-w-[56rem]">
+        <thead>
+          <tr>
+            <th scope="col">仓库</th>
+            <th scope="col">默认分支</th>
+            <th scope="col">服务器路径</th>
+            <th scope="col" class="text-right">开放 Issue</th>
+            <th scope="col" class="text-right">操作</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in rows %}
+          <tr class="hover:bg-base-300">
+            <td>
+              <div class="flex items-center gap-2">
+                <a class="link link-hover font-mono text-sm font-medium text-base-content" href="/repos/{{ row.repo.id }}">{{ row.repo.github_full_name }}</a>
+                {% if row.repo.html_url %}
+                <a class="btn btn-ghost btn-xs" href="{{ row.repo.html_url }}" target="_blank" rel="noopener" aria-label="在 GitHub 打开 {{ row.repo.github_full_name }}" title="在 GitHub 打开">{{ icon('external-link') }}</a>
+                {% endif %}
+              </div>
+            </td>
+            <td><code class="rounded bg-base-200 px-1.5 py-0.5 font-mono text-xs text-base-content">{{ row.repo.default_branch }}</code></td>
+            <td>
+              {% if row.repo.local_path %}
+              <span class="block max-w-[18rem] truncate font-mono text-xs text-base-content/70" title="{{ row.repo.local_path }}">{{ row.repo.local_path }}</span>
+              {% else %}
+              <span class="flex flex-wrap items-center gap-2">
+                <span class="badge badge-sm badge-warning gap-1 whitespace-nowrap">{{ icon('alert-triangle', 'h-3.5 w-3.5') }}<span>未填写</span></span>
+                <a class="link link-primary text-xs font-medium" href="/repos/{{ row.repo.id }}">去填写</a>
+              </span>
               {% endif %}
-            </div>
-          </td>
-          <td><code class="rounded bg-slate-100 px-1.5 py-0.5 text-xs text-slate-700">{{ row.repo.default_branch }}</code></td>
-          <td>
-            {% if row.repo.local_path %}
-            <span class="block max-w-[18rem] truncate font-mono-data text-xs text-slate-700" title="{{ row.repo.local_path }}">{{ row.repo.local_path }}</span>
-            {% else %}
-            <span class="flex flex-wrap items-center gap-2">
-              <span class="badge badge-sm badge-warning gap-1 whitespace-nowrap">{{ icon('alert-triangle', 'h-3.5 w-3.5') }}<span>未填写</span></span>
-              <a class="link link-hover text-xs font-medium text-sky-700" href="/repos/{{ row.repo.id }}">去填写</a>
-            </span>
-            {% endif %}
-          </td>
-          <td class="text-right">
-            <a class="link link-hover font-mono-data tabular-nums text-slate-900" href="/repos/{{ row.repo.id }}/issues?github_state=open" aria-label="查看 {{ row.repo.github_full_name }} 的开放 Issue">{{ row.open_issues }}</a>
-          </td>
-          <td>
-            <div class="flex flex-wrap items-center justify-end gap-2">
-              <a class="btn btn-sm btn-primary gap-1.5" href="/repos/{{ row.repo.id }}/issues">{{ icon('issue') }}<span>Issue</span></a>
-              <form method="post" action="/repos/{{ row.repo.id }}/resync" class="inline-flex">
-                <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
-                <button type="submit" class="btn btn-sm btn-outline gap-1.5" data-gw-submit>{{ icon('refresh') }}<span>重新同步</span></button>
-              </form>
-            </div>
-          </td>
-        </tr>
-        {% endfor %}
-      </tbody>
-    </table>
+            </td>
+            <td class="text-right">
+              <a class="link link-hover font-mono tabular-nums text-base-content" href="/repos/{{ row.repo.id }}/issues?github_state=open" aria-label="查看 {{ row.repo.github_full_name }} 的开放 Issue">{{ row.open_issues }}</a>
+            </td>
+            <td>
+              <div class="flex flex-wrap items-center justify-end gap-2">
+                <a class="btn btn-sm btn-primary gap-1.5" href="/repos/{{ row.repo.id }}/issues">{{ icon('issue') }}<span>Issue</span></a>
+                <form method="post" action="/repos/{{ row.repo.id }}/resync" class="inline-flex">
+                  <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+                  <button type="submit" class="btn btn-sm btn-outline gap-1.5" data-gw-submit>{{ icon('refresh') }}<span>重新同步</span></button>
+                </form>
+              </div>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
   </div>
 </div>
 {% endif %}

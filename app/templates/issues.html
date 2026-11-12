@@ -5,54 +5,56 @@
 
 {% block page_header %}
 {% call page_header('Issue', '按编号倒序；筛选条件会写入 URL。操作可用性与流程状态严格对应。', '仓库 · ' ~ repo.github_full_name) %}
-  <span class="text-sm text-slate-500">当前结果 <span class="font-mono-data text-slate-900">{{ total }}</span> 条</span>
+  <span class="text-sm text-base-content/70">当前结果 <span class="font-mono text-base-content" data-count="total">{{ total }}</span> 条</span>
 {% endcall %}
 {% endblock %}
 
 {% block content %}
-<div class="gw-card mb-4 p-4">
-  <form method="get" class="flex flex-wrap items-end gap-3" data-gw-filter-form>
-    <div class="min-w-0">
-      <label class="mb-1 block text-xs font-medium text-slate-600" for="kind">类型</label>
-      <select id="kind" name="kind" class="select select-bordered select-sm w-full min-w-[8rem]">
-        <option value="" {% if not kind %}selected{% endif %}>全部</option>
-        <option value="feature" {% if kind == 'feature' %}selected{% endif %}>功能迭代</option>
-        <option value="support" {% if kind == 'support' %}selected{% endif %}>人工介入</option>
-        <option value="pending" {% if kind == 'pending' %}selected{% endif %}>待分类</option>
-      </select>
-    </div>
-    <div class="min-w-0">
-      <label class="mb-1 block text-xs font-medium text-slate-600" for="status">流程状态</label>
-      <select id="status" name="status" class="select select-bordered select-sm w-full min-w-[9rem]">
-        <option value="" {% if not status %}selected{% endif %}>全部</option>
-        {% for value, label in status_options %}
-        <option value="{{ value }}" {% if status == value %}selected{% endif %}>{{ label }}</option>
-        {% endfor %}
-      </select>
-    </div>
-    <div class="min-w-0">
-      <label class="mb-1 block text-xs font-medium text-slate-600" for="pr_state">PR 状态</label>
-      <select id="pr_state" name="pr_state" class="select select-bordered select-sm w-full min-w-[10rem]">
-        <option value="" {% if not pr_state %}selected{% endif %}>全部</option>
-        <option value="none" {% if pr_state == 'none' %}selected{% endif %}>无 PR 或状态未同步</option>
-        <option value="open" {% if pr_state == 'open' %}selected{% endif %}>开放</option>
-        <option value="merged" {% if pr_state == 'merged' %}selected{% endif %}>已合并</option>
-        <option value="closed" {% if pr_state == 'closed' %}selected{% endif %}>已关闭（未合并）</option>
-      </select>
-    </div>
-    <div class="min-w-0">
-      <label class="mb-1 block text-xs font-medium text-slate-600" for="github_state">GitHub 状态</label>
-      <select id="github_state" name="github_state" class="select select-bordered select-sm w-full min-w-[8rem]">
-        <option value="open" {% if github_state == 'open' %}selected{% endif %}>开放</option>
-        <option value="closed" {% if github_state == 'closed' %}selected{% endif %}>已关闭</option>
-        <option value="" {% if github_state == '' %}selected{% endif %}>全部</option>
-      </select>
-    </div>
-    <div class="flex flex-wrap items-center gap-2">
-      <button class="btn btn-sm btn-primary gap-1.5" type="submit">{{ icon('check') }}<span>应用筛选</span></button>
-      <a class="btn btn-sm btn-ghost" href="?github_state=open">清除筛选</a>
-    </div>
-  </form>
+<div class="card card-border mb-4 bg-base-100 shadow-sm">
+  <div class="card-body p-4">
+    <form method="get" class="flex flex-wrap items-end gap-3" data-gw-filter-form>
+      <div class="min-w-0">
+        <label class="label mb-1 text-xs font-medium text-base-content/70" for="kind">类型</label>
+        <select id="kind" name="kind" class="select select-sm w-full min-w-[8rem]">
+          <option value="" {% if not kind %}selected{% endif %}>全部</option>
+          <option value="feature" {% if kind == 'feature' %}selected{% endif %}>功能迭代</option>
+          <option value="support" {% if kind == 'support' %}selected{% endif %}>人工介入</option>
+          <option value="pending" {% if kind == 'pending' %}selected{% endif %}>待分类</option>
+        </select>
+      </div>
+      <div class="min-w-0">
+        <label class="label mb-1 text-xs font-medium text-base-content/70" for="status">流程状态</label>
+        <select id="status" name="status" class="select select-sm w-full min-w-[9rem]">
+          <option value="" {% if not status %}selected{% endif %}>全部</option>
+          {% for value, label in status_options %}
+          <option value="{{ value }}" {% if status == value %}selected{% endif %}>{{ label }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="min-w-0">
+        <label class="label mb-1 text-xs font-medium text-base-content/70" for="pr_state">PR 状态</label>
+        <select id="pr_state" name="pr_state" class="select select-sm w-full min-w-[10rem]">
+          <option value="" {% if not pr_state %}selected{% endif %}>全部</option>
+          <option value="none" {% if pr_state == 'none' %}selected{% endif %}>无 PR 或状态未同步</option>
+          <option value="open" {% if pr_state == 'open' %}selected{% endif %}>开放</option>
+          <option value="merged" {% if pr_state == 'merged' %}selected{% endif %}>已合并</option>
+          <option value="closed" {% if pr_state == 'closed' %}selected{% endif %}>已关闭（未合并）</option>
+        </select>
+      </div>
+      <div class="min-w-0">
+        <label class="label mb-1 text-xs font-medium text-base-content/70" for="github_state">GitHub 状态</label>
+        <select id="github_state" name="github_state" class="select select-sm w-full min-w-[8rem]">
+          <option value="open" {% if github_state == 'open' %}selected{% endif %}>开放</option>
+          <option value="closed" {% if github_state == 'closed' %}selected{% endif %}>已关闭</option>
+          <option value="" {% if github_state == '' %}selected{% endif %}>全部</option>
+        </select>
+      </div>
+      <div class="flex flex-wrap items-center gap-2">
+        <button class="btn btn-sm btn-primary gap-1.5" type="submit">{{ icon('check') }}<span>应用筛选</span></button>
+        <a class="btn btn-sm btn-ghost" href="?github_state=open">清除筛选</a>
+      </div>
+    </form>
+  </div>
 </div>
 
 {% if not rows %}
@@ -64,46 +66,48 @@
     {{ empty_state('还没有 Issue', '收到 Webhook 后将出现在这里。', 'issue', '?github_state=open', '清除筛选') }}
   {% endif %}
 {% else %}
-<div class="gw-card overflow-hidden">
-  <div class="overflow-x-auto">
-    <table class="gw-table table min-w-[62rem]">
-      <thead>
-        <tr>
-          <th scope="col">编号</th>
-          <th scope="col">标题</th>
-          <th scope="col">类型</th>
-          <th scope="col">状态</th>
-          <th scope="col">更新</th>
-          <th scope="col" class="text-right">操作</th>
-        </tr>
-      </thead>
-      <tbody>
-        {% for item in rows %}
-        <tr>
-          <td class="align-top">
-            <div class="flex items-center gap-1">
-              <a class="link link-hover font-mono-data text-sm text-slate-900" href="/issues/{{ item.issue.id }}">#{{ item.issue.number }}</a>
-              {% if item.issue.html_url %}
-              <a class="btn btn-ghost btn-xs" href="{{ item.issue.html_url }}" target="_blank" rel="noopener" aria-label="在 GitHub 打开 Issue #{{ item.issue.number }}" title="在 GitHub 打开">{{ icon('external-link') }}</a>
+<div class="card card-border overflow-hidden bg-base-100 shadow-sm">
+  <div class="card-body p-0">
+    <div class="overflow-x-auto">
+      <table class="table min-w-[62rem]">
+        <thead>
+          <tr>
+            <th scope="col">编号</th>
+            <th scope="col">标题</th>
+            <th scope="col">类型</th>
+            <th scope="col">状态</th>
+            <th scope="col">更新</th>
+            <th scope="col" class="text-right">操作</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for item in rows %}
+          <tr class="hover:bg-base-300">
+            <td class="align-top">
+              <div class="flex items-center gap-1">
+                <a class="link link-hover font-mono text-sm text-base-content" href="/issues/{{ item.issue.id }}">#{{ item.issue.number }}</a>
+                {% if item.issue.html_url %}
+                <a class="btn btn-ghost btn-xs" href="{{ item.issue.html_url }}" target="_blank" rel="noopener" aria-label="在 GitHub 打开 Issue #{{ item.issue.number }}" title="在 GitHub 打开">{{ icon('external-link') }}</a>
+                {% endif %}
+              </div>
+            </td>
+            <td class="align-top">
+              <a class="link link-hover line-clamp-2 max-w-[24rem] font-medium text-base-content" href="/issues/{{ item.issue.id }}" title="{{ item.issue.title }}">{{ item.issue.title }}</a>
+              {% if item.issue.author_login %}
+              <span class="mt-0.5 block text-xs text-base-content/60">@{{ item.issue.author_login }}</span>
               {% endif %}
-            </div>
-          </td>
-          <td class="align-top">
-            <a class="link link-hover line-clamp-2 max-w-[24rem] font-medium text-slate-900" href="/issues/{{ item.issue.id }}" title="{{ item.issue.title }}">{{ item.issue.title }}</a>
-            {% if item.issue.author_login %}
-            <span class="mt-0.5 block text-xs text-slate-500">@{{ item.issue.author_login }}</span>
-            {% endif %}
-          </td>
-          <td class="align-top">{{ kind_badge(item.issue.kind) }}</td>
-          <td class="align-top">{{ list_status_badge(item.issue) }}</td>
-          <td class="align-top whitespace-nowrap font-mono-data text-xs text-slate-600"{% if item.issue.github_updated_at or item.issue.updated_at %} title="{{ (item.issue.github_updated_at or item.issue.updated_at) | gw_iso }}"{% endif %}>{{ (item.issue.github_updated_at or item.issue.updated_at) | gw_time }} UTC</td>
-          <td class="align-top">
-            {{ issue_actions(item.actions, csrf_token) }}
-          </td>
-        </tr>
-        {% endfor %}
-      </tbody>
-    </table>
+            </td>
+            <td class="align-top">{{ kind_badge(item.issue.kind) }}</td>
+            <td class="align-top">{{ list_status_badge(item.issue) }}</td>
+            <td class="align-top whitespace-nowrap font-mono text-xs text-base-content/70"{% if item.issue.github_updated_at or item.issue.updated_at %} title="{{ (item.issue.github_updated_at or item.issue.updated_at) | gw_iso }}"{% endif %}>{{ (item.issue.github_updated_at or item.issue.updated_at) | gw_time }} UTC</td>
+            <td class="align-top">
+              {{ issue_actions(item.actions, csrf_token) }}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
   </div>
 </div>
 {% endif %}

@@ -65,14 +65,14 @@
 
 {% set first_error = 'local_path' if field_errors.local_path else ('doc_dir' if field_errors.doc_dir else '') %}
 <div class="grid min-w-0 gap-6 lg:grid-cols-3">
-  <section class="card card-border order-1 min-w-0 bg-base-100 shadow-sm lg:order-2 lg:col-span-1" aria-labelledby="local-config-title">
-    <div class="card-body min-w-0 p-5">
+  <section class="card card-border order-1 min-w-0 max-w-full bg-base-100 shadow-sm lg:order-2 lg:col-span-1" aria-labelledby="local-config-title">
+    <div class="card-body min-w-0 max-w-full p-5">
       <h2 id="local-config-title" class="card-title text-base">
         {{ icon('settings', 'h-5 w-5 text-base-content/60') }}<span>本地配置</span>
       </h2>
-      <form method="post" action="/repos/{{ repo.id }}" class="w-full min-w-0 space-y-4">
+      <form method="post" action="/repos/{{ repo.id }}" class="w-full min-w-0 max-w-full space-y-4">
         <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
-        <fieldset class="fieldset w-full min-w-0">
+        <fieldset class="fieldset w-full min-w-0 max-w-full">
           <legend class="fieldset-legend">路径设置</legend>
 
           <label class="label" for="local_path">服务器项目路径</label>
@@ -87,9 +87,9 @@
             {% if form_disabled %}disabled{% endif %}
             {% if first_error == 'local_path' %}autofocus{% endif %}
           />
-          <p id="local_path-help" class="label text-xs leading-5 text-base-content/60">须为已 clone 的 git 顶层绝对路径；origin 必须匹配 <code class="break-all rounded bg-base-200 px-1 py-0.5 font-mono">{{ repo.github_full_name }}</code>。</p>
+          <p id="local_path-help" class="mt-1 w-full min-w-0 max-w-full whitespace-normal break-words text-xs leading-5 text-base-content/60">须为已 clone 的 git 顶层绝对路径；origin 必须匹配 <code class="break-all whitespace-normal rounded bg-base-200 px-1 py-0.5 font-mono">{{ repo.github_full_name }}</code>。</p>
           {% if field_errors.local_path %}
-          <p id="local_path-error" class="text-sm text-error">{{ field_errors.local_path }}</p>
+          <p id="local_path-error" class="mt-1 min-w-0 max-w-full break-words text-sm text-error">{{ field_errors.local_path }}</p>
           {% endif %}
 
           <label class="label" for="doc_dir">文档目录</label>
@@ -104,9 +104,9 @@
             {% if form_disabled %}disabled{% endif %}
             {% if first_error == 'doc_dir' %}autofocus{% endif %}
           />
-          <p id="doc_dir-help" class="label text-xs leading-5 text-base-content/60">相对路径，默认 <code class="rounded bg-base-200 px-1 py-0.5 font-mono">docs</code>；基石入口为 <code class="break-all rounded bg-base-200 px-1 py-0.5 font-mono">{doc_dir}/README.md</code>。</p>
+          <p id="doc_dir-help" class="mt-1 w-full min-w-0 max-w-full whitespace-normal break-words text-xs leading-5 text-base-content/60">相对路径，默认 <code class="break-all whitespace-normal rounded bg-base-200 px-1 py-0.5 font-mono">docs</code>；基石入口为 <code class="break-all whitespace-normal rounded bg-base-200 px-1 py-0.5 font-mono">{doc_dir}/README.md</code>。</p>
           {% if field_errors.doc_dir %}
-          <p id="doc_dir-error" class="text-sm text-error">{{ field_errors.doc_dir }}</p>
+          <p id="doc_dir-error" class="mt-1 min-w-0 max-w-full break-words text-sm text-error">{{ field_errors.doc_dir }}</p>
           {% endif %}
         </fieldset>
         <button type="submit" class="btn btn-primary btn-sm gap-1.5" data-gw-submit {% if form_disabled %}disabled{% endif %}>

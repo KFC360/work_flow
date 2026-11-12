@@ -31,6 +31,9 @@ def test_prompt_includes_foundation_when_present(tmp_path: Path) -> None:
     assert "docs/README.md" in prompt
     assert "# foundation" in prompt
     assert "@documentation" in prompt
+    assert "Web Search" in prompt
+    assert "预授权" in prompt
+    assert "不得向用户提问" in prompt
 
 
 def test_codegen_prompt_mentions_ui_skill() -> None:
@@ -42,6 +45,8 @@ def test_codegen_prompt_mentions_ui_skill() -> None:
         foundation=None,
     )
     assert "@ui-ux-pro-max" in prompt
+    assert "Web Search" in prompt
+    assert "预授权" in prompt
 
 
 def test_prompt_requires_pending_when_missing(tmp_path: Path) -> None:

@@ -1,0 +1,44 @@
+# CD: after a PR is merged into master (push to master), deploy to the production host.
+# Required repo Secrets: DEPLOY_HOST, DEPLOY_USER, DEPLOY_SSH_KEY, DEPLOY_PATH
+# Optional: DEPLOY_PORT (default 22)
+name: deploy
+
+on:
+  push:
+    branches: [master]
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - name: Deploy over SSH
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          port: ${{ secrets.DEPLOY_PORT || 22 }}
+          script_stop: true
+          script: |
+            set -euo pipefail
+            cd "$DEPLOY_PATH"
+            git fetch origin master
+            git checkout master
+            git pull --ff-only origin master
+            uv sync --extra dev
+            if [ -f alembic.ini ]; then
+              uv run alembic upgrade head
+            fi
+            if [ -x ./scripts/sync_opencode_skills.sh ]; then
+              ./scripts/sync_opencode_skills.sh || true
+            fi
+            sudo supervisorctl restart 'github-workflow:*'
+            sudo supervisorctl status 'github-workflow:*'
+        env:
+          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}

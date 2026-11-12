@@ -111,7 +111,10 @@ test -f /home/linuxuser/repos/work_flow/docs/architecture/design.md && echo ok
 uv run pytest
 ```
 
-CI：GitHub Actions `.github/workflows/ci.yml` 在 `pull_request` 与 `master` push 时跑 pytest（独立 Postgres service）。本系统只负责开到 PR；合并与部署仍人工或另配 CD。
+CI：`.github/workflows/ci.yml` — `pull_request` / `master` push 时跑 pytest。  
+CD：`.github/workflows/deploy.yml` — **PR 合并进 `master` 后** SSH 到服务器 `git pull`、`uv sync`、重启 Supervisor。本系统只负责开到 PR；合并由人在 GitHub 完成，合并即触发 CD。
+
+CD 需在仓库 Settings → Secrets 配置：`DEPLOY_HOST`、`DEPLOY_USER`、`DEPLOY_SSH_KEY`、`DEPLOY_PATH`（可选 `DEPLOY_PORT`）。服务器账号需能对该目录 `git pull`，并免密 `sudo supervisorctl restart github-workflow:*`。
 
 ## 目录
 

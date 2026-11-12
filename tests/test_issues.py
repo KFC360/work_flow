@@ -171,7 +171,7 @@ def test_unfinished_filter_matches_summary_counts(client: TestClient, db: Sessio
         f"/repos/{repo.id}/issues?kind=feature&status=unfinished&github_state=open"
     )
     assert resp.status_code == 200
-    assert '<span class="font-mono-data text-slate-900">2</span>' in resp.text
+    assert 'data-count="total">2</span>' in resp.text
     assert "issue-1" in resp.text
     assert "issue-3" in resp.text
     assert "issue-2" not in resp.text
@@ -181,11 +181,11 @@ def test_unfinished_filter_matches_summary_counts(client: TestClient, db: Sessio
     resp = client.get(
         f"/repos/{repo.id}/issues?kind=support&status=support_open&github_state=open"
     )
-    assert '<span class="font-mono-data text-slate-900">1</span>' in resp.text
+    assert 'data-count="total">1</span>' in resp.text
     assert "issue-4" in resp.text
 
     resp = client.get(f"/repos/{repo.id}/issues?status=failed&github_state=open")
-    assert '<span class="font-mono-data text-slate-900">1</span>' in resp.text
+    assert 'data-count="total">1</span>' in resp.text
     assert "issue-3" in resp.text
 
 
@@ -197,7 +197,7 @@ def test_exact_status_filter_unchanged(client: TestClient, db: Session) -> None:
 
     resp = client.get(f"/repos/{repo.id}/issues?status=recorded&github_state=open")
     assert resp.status_code == 200
-    assert '<span class="font-mono-data text-slate-900">1</span>' in resp.text
+    assert 'data-count="total">1</span>' in resp.text
     assert "issue-1" in resp.text
     assert "issue-2" not in resp.text
 

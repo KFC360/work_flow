@@ -15,21 +15,25 @@
 
 {% block page_header %}
 {% call page_header('Webhook 投递', 'GitHub 不会自动重投失败的 Webhook；失败投递可人工重试。', '系统') %}
-  <span class="text-sm text-slate-500">共 <span class="font-mono-data text-slate-900">{{ total }}</span> 条</span>
+  <span class="text-sm text-base-content/70">共 <span class="font-mono text-base-content" data-count="total">{{ total }}</span> 条</span>
 {% endcall %}
 {% endblock %}
 
 {% block content %}
-<div class="gw-card mb-4 p-3">
-  <nav class="flex items-center gap-1 overflow-x-auto whitespace-nowrap" aria-label="按状态筛选">
-    {% for value, label in filter_items %}
-    <a
-      class="btn btn-sm {% if status == value %}btn-primary{% else %}btn-ghost{% endif %}"
-      href="?status={{ value }}"
-      {% if status == value %}aria-current="page"{% endif %}
-    >{{ label }}</a>
-    {% endfor %}
-  </nav>
+<div class="card card-border mb-4 bg-base-100 shadow-sm">
+  <div class="card-body p-3">
+    <nav class="flex items-center gap-1 overflow-x-auto whitespace-nowrap" aria-label="按状态筛选">
+      <div class="join">
+        {% for value, label in filter_items %}
+        <a
+          class="join-item btn btn-sm {% if status == value %}btn-active{% else %}btn-ghost{% endif %}"
+          href="?status={{ value }}"
+          {% if status == value %}aria-current="page"{% endif %}
+        >{{ label }}</a>
+        {% endfor %}
+      </div>
+    </nav>
+  </div>
 </div>
 
 {% if not rows %}
@@ -39,65 +43,67 @@
     {{ empty_state('还没有投递', 'Webhook 配置好并收到事件后会出现在这里。', 'webhook') }}
   {% endif %}
 {% else %}
-<div class="gw-card overflow-hidden">
-  <div class="overflow-x-auto">
-    <table class="gw-table table min-w-[72rem]">
-      <thead>
-        <tr>
-          <th scope="col">Delivery</th>
-          <th scope="col">事件动作</th>
-          <th scope="col">仓库</th>
-          <th scope="col">状态</th>
-          <th scope="col" class="text-right">尝试</th>
-          <th scope="col">下次重试</th>
-          <th scope="col">收到时间</th>
-          <th scope="col">错误</th>
-          <th scope="col" class="text-right">操作</th>
-        </tr>
-      </thead>
-      <tbody>
-        {% for row in rows %}
-        <tr>
-          <td class="whitespace-nowrap font-mono-data text-xs text-slate-700" title="{{ row.delivery_id }}">{{ row.delivery_id[:10] }}…</td>
-          <td class="whitespace-nowrap text-sm text-slate-800">
-            {{ row.event }}{% if row.action %} <span class="text-slate-400">·</span> {{ row.action }}{% else %} <span class="text-slate-400">·</span> —{% endif %}
-          </td>
-          <td class="text-sm">
-            {% if row.repository_id and repo_names.get(row.repository_id) %}
-            <span class="font-mono-data text-xs text-slate-800">{{ repo_names.get(row.repository_id) }}</span>
-            {% elif row.repository_id %}
-            <span class="font-mono-data text-xs text-slate-500" title="未解析到仓库名称">#{{ row.repository_id }}</span>
-            {% else %}
-            <span class="text-slate-500">—</span>
-            {% endif %}
-          </td>
-          <td>{{ delivery_badge(row.status) }}</td>
-          <td class="text-right font-mono-data tabular-nums">{{ row.attempts }}</td>
-          <td class="whitespace-nowrap font-mono-data text-xs {% if row.status == 'retry' %}text-amber-700{% else %}text-slate-500{% endif %}">
-            {% if row.status == 'retry' and row.next_retry_at %}{{ row.next_retry_at | gw_time }} UTC{% else %}—{% endif %}
-          </td>
-          <td class="whitespace-nowrap font-mono-data text-xs text-slate-600"{% if row.created_at %} title="{{ row.created_at | gw_iso }}"{% endif %}>{{ row.created_at | gw_time }} UTC</td>
-          <td class="max-w-[20rem]">
-            {% if row.last_error %}
-            <span class="line-clamp-2 break-words text-xs leading-5 text-red-700" title="{{ row.last_error }}">{{ row.last_error }}</span>
-            {% else %}
-            <span class="text-slate-500">—</span>
-            {% endif %}
-          </td>
-          <td class="text-right">
-            {% if row.status == 'failed' %}
-            <form method="post" action="/deliveries/{{ row.delivery_id }}/retry" class="inline-flex">
-              <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
-              <button type="submit" class="btn btn-sm btn-outline gap-1.5" data-gw-submit>{{ icon('refresh') }}<span>重试投递</span></button>
-            </form>
-            {% else %}
-            <span class="text-slate-400">—</span>
-            {% endif %}
-          </td>
-        </tr>
-        {% endfor %}
-      </tbody>
-    </table>
+<div class="card card-border overflow-hidden bg-base-100 shadow-sm">
+  <div class="card-body p-0">
+    <div class="overflow-x-auto">
+      <table class="table min-w-[72rem]">
+        <thead>
+          <tr>
+            <th scope="col">Delivery</th>
+            <th scope="col">事件动作</th>
+            <th scope="col">仓库</th>
+            <th scope="col">状态</th>
+            <th scope="col" class="text-right">尝试</th>
+            <th scope="col">下次重试</th>
+            <th scope="col">收到时间</th>
+            <th scope="col">错误</th>
+            <th scope="col" class="text-right">操作</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in rows %}
+          <tr class="hover:bg-base-300">
+            <td class="whitespace-nowrap font-mono text-xs text-base-content/70" title="{{ row.delivery_id }}">{{ row.delivery_id[:10] }}…</td>
+            <td class="whitespace-nowrap text-sm text-base-content">
+              {{ row.event }}{% if row.action %} <span class="text-base-content/40">·</span> {{ row.action }}{% else %} <span class="text-base-content/40">·</span> —{% endif %}
+            </td>
+            <td class="text-sm">
+              {% if row.repository_id and repo_names.get(row.repository_id) %}
+              <span class="font-mono text-xs text-base-content">{{ repo_names.get(row.repository_id) }}</span>
+              {% elif row.repository_id %}
+              <span class="font-mono text-xs text-base-content/60" title="未解析到仓库名称">#{{ row.repository_id }}</span>
+              {% else %}
+              <span class="text-base-content/60">—</span>
+              {% endif %}
+            </td>
+            <td>{{ delivery_badge(row.status) }}</td>
+            <td class="text-right font-mono tabular-nums text-base-content">{{ row.attempts }}</td>
+            <td class="whitespace-nowrap font-mono text-xs {% if row.status == 'retry' %}text-warning{% else %}text-base-content/60{% endif %}">
+              {% if row.status == 'retry' and row.next_retry_at %}{{ row.next_retry_at | gw_time }} UTC{% else %}—{% endif %}
+            </td>
+            <td class="whitespace-nowrap font-mono text-xs text-base-content/70"{% if row.created_at %} title="{{ row.created_at | gw_iso }}"{% endif %}>{{ row.created_at | gw_time }} UTC</td>
+            <td class="max-w-[20rem]">
+              {% if row.last_error %}
+              <span class="line-clamp-2 break-words text-xs leading-5 text-error" title="{{ row.last_error }}">{{ row.last_error }}</span>
+              {% else %}
+              <span class="text-base-content/60">—</span>
+              {% endif %}
+            </td>
+            <td class="text-right">
+              {% if row.status == 'failed' %}
+              <form method="post" action="/deliveries/{{ row.delivery_id }}/retry" class="inline-flex">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+                <button type="submit" class="btn btn-sm btn-outline gap-1.5" data-gw-submit>{{ icon('refresh') }}<span>重试投递</span></button>
+              </form>
+              {% else %}
+              <span class="text-base-content/40">—</span>
+              {% endif %}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
   </div>
 </div>
 {% endif %}

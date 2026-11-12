@@ -163,43 +163,48 @@
 {% macro page_header(title, description='', eyebrow='') -%}
 <div class="mb-6 flex flex-wrap items-start justify-between gap-4">
   <div class="min-w-0">
-    {% if eyebrow %}<p class="mb-1 text-xs font-semibold uppercase tracking-wider text-sky-700">{{ eyebrow }}</p>{% endif %}
-    <h1 class="break-words text-2xl font-semibold tracking-tight text-slate-900">{{ title }}</h1>
-    {% if description %}<p class="mt-1 max-w-3xl text-sm leading-6 text-slate-600">{{ description }}</p>{% endif %}
+    {% if eyebrow %}<p class="mb-1 text-xs font-semibold uppercase tracking-wider text-primary">{{ eyebrow }}</p>{% endif %}
+    <h1 class="break-words text-2xl font-semibold tracking-tight text-base-content">{{ title }}</h1>
+    {% if description %}<p class="mt-1 max-w-3xl text-sm leading-6 text-base-content/70">{{ description }}</p>{% endif %}
   </div>
   {% if caller %}<div class="flex flex-wrap items-center gap-2">{{ caller() }}</div>{% endif %}
 </div>
 {%- endmacro %}
 
 {% macro empty_state(title, description, icon_name='inbox', href=None, link_label=None) -%}
-<div class="gw-card flex flex-col items-center justify-center px-6 py-14 text-center">
-  <span class="mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-sky-50 text-sky-700">
-    {{ icon(icon_name, 'h-6 w-6') }}
-  </span>
-  <h2 class="text-base font-semibold text-slate-900">{{ title }}</h2>
-  <p class="mt-1 max-w-md text-sm leading-6 text-slate-600">{{ description }}</p>
-  {% if href and link_label %}
-  <a class="btn btn-sm btn-outline mt-5 gap-1.5" href="{{ href }}">
-    {{ icon('arrow-right') }}<span>{{ link_label }}</span>
-  </a>
-  {% endif %}
+<div class="card card-border mx-auto w-full max-w-xl bg-base-100 shadow-sm">
+  <div class="card-body items-center py-12 text-center">
+    <span class="mb-2 flex h-12 w-12 items-center justify-center rounded-full bg-primary/10 text-primary">
+      {{ icon(icon_name, 'h-6 w-6') }}
+    </span>
+    <h2 class="card-title justify-center text-base">{{ title }}</h2>
+    <p class="max-w-md text-sm leading-6 text-base-content/70">{{ description }}</p>
+    {% if href and link_label %}
+    <div class="card-actions mt-3">
+      <a class="btn btn-sm btn-outline gap-1.5" href="{{ href }}">
+        {{ icon('arrow-right') }}<span>{{ link_label }}</span>
+      </a>
+    </div>
+    {% endif %}
+  </div>
 </div>
 {%- endmacro %}
 
 {% macro pagination(page, has_prev, has_next, prev_url, next_url) -%}
 {% if has_prev or has_next %}
 <nav class="mt-4 flex flex-wrap items-center justify-between gap-3 text-sm" aria-label="分页">
-  <span class="text-slate-600">第 <span class="font-mono-data text-slate-900">{{ page }}</span> 页</span>
-  <div class="flex items-center gap-2">
+  <span class="text-base-content/70">第 <span class="font-mono text-base-content" data-count="page">{{ page }}</span> 页</span>
+  <div class="join">
     {% if has_prev %}
-    <a class="btn btn-sm btn-outline gap-1.5" href="{{ prev_url }}" rel="prev">{{ icon('arrow-left') }}<span>上一页</span></a>
+    <a class="btn btn-sm btn-outline join-item gap-1.5" href="{{ prev_url }}" rel="prev">{{ icon('arrow-left') }}<span>上一页</span></a>
     {% else %}
-    <span class="btn btn-sm btn-disabled gap-1.5" aria-disabled="true">{{ icon('arrow-left') }}<span>上一页</span></span>
+    <span class="btn btn-sm btn-outline btn-disabled join-item gap-1.5" aria-disabled="true">{{ icon('arrow-left') }}<span>上一页</span></span>
     {% endif %}
+    <span class="btn btn-sm btn-active join-item" aria-current="page">{{ page }}</span>
     {% if has_next %}
-    <a class="btn btn-sm btn-outline gap-1.5" href="{{ next_url }}" rel="next"><span>下一页</span>{{ icon('arrow-right') }}</a>
+    <a class="btn btn-sm btn-outline join-item gap-1.5" href="{{ next_url }}" rel="next"><span>下一页</span>{{ icon('arrow-right') }}</a>
     {% else %}
-    <span class="btn btn-sm btn-disabled gap-1.5" aria-disabled="true"><span>下一页</span>{{ icon('arrow-right') }}</span>
+    <span class="btn btn-sm btn-outline btn-disabled join-item gap-1.5" aria-disabled="true"><span>下一页</span>{{ icon('arrow-right') }}</span>
     {% endif %}
   </div>
 </nav>
@@ -230,7 +235,7 @@
 {% set ns = namespace(primary_used=false) %}
 <div class="flex flex-wrap items-center justify-end gap-1.5">
   <noscript>
-    <p class="text-xs text-amber-700">确认弹窗需要启用 JavaScript，贵重操作暂不可用。</p>
+    <p class="text-xs text-warning">确认弹窗需要启用 JavaScript，贵重操作暂不可用。</p>
   </noscript>
   {% for act in actions %}
     {% set is_primary = act.variant == 'primary' and not ns.primary_used %}
@@ -266,46 +271,46 @@
   {% endfor %}
 </div>
 {% else %}
-<span class="text-xs text-slate-400" aria-label="无可用操作">—</span>
+<span class="text-xs text-base-content/40" aria-label="无可用操作">—</span>
 {% endif %}
 {%- endmacro %}
 
 {% macro live_status(issue, latest_job, log_warning, worker_status, worker_text) -%}
 <div class="space-y-3 text-sm">
   <div class="flex flex-wrap items-center gap-2">
-    <span class="text-xs font-medium uppercase tracking-wide text-slate-500">流程状态</span>
+    <span class="text-xs font-medium uppercase tracking-wide text-base-content/60">流程状态</span>
     {{ issue_status_badge(issue.status) }}
     {{ github_state_badge(issue.github_state) }}
   </div>
   {% if issue.last_error %}
-  <p class="break-words rounded-lg bg-red-50 px-3 py-2 text-xs leading-5 text-red-700">{{ issue.last_error }}</p>
+  <p class="alert alert-error py-2 text-xs leading-5 break-words">{{ issue.last_error }}</p>
   {% endif %}
   <dl class="grid grid-cols-1 gap-2 text-xs sm:grid-cols-2">
     <div>
-      <dt class="text-slate-500">最近任务</dt>
+      <dt class="text-base-content/60">最近任务</dt>
       <dd class="mt-1 flex flex-wrap items-center gap-1.5">
         {% if latest_job %}
-          <span class="text-slate-900">{{ action_label(latest_job.action) }}</span>
+          <span class="text-base-content">{{ action_label(latest_job.action) }}</span>
           {{ job_badge(latest_job.status) }}
         {% else %}
-          <span class="text-slate-500">—</span>
+          <span class="text-base-content/60">—</span>
         {% endif %}
       </dd>
     </div>
     <div>
-      <dt class="text-slate-500">代码生成阶段</dt>
-      <dd class="mt-1 text-slate-900">{{ phase_label(issue.codegen_phase) }}</dd>
+      <dt class="text-base-content/60">代码生成阶段</dt>
+      <dd class="mt-1 text-base-content">{{ phase_label(issue.codegen_phase) }}</dd>
     </div>
     <div>
-      <dt class="text-slate-500">Worker</dt>
+      <dt class="text-base-content/60">Worker</dt>
       <dd class="mt-1 flex flex-wrap items-center gap-1.5">
         {{ worker_badge(worker_status) }}
-        <span class="text-slate-700">{{ worker_text }}</span>
+        <span class="text-base-content/80">{{ worker_text }}</span>
       </dd>
     </div>
     <div>
-      <dt class="text-slate-500">日志</dt>
-      <dd class="mt-1 {% if log_warning %}text-amber-700{% else %}text-slate-700{% endif %}">
+      <dt class="text-base-content/60">日志</dt>
+      <dd class="mt-1 {% if log_warning %}text-warning{% else %}text-base-content/80{% endif %}">
         {% if log_warning %}日志路径不可用{% elif latest_job %}可读取最近任务日志{% else %}暂无任务{% endif %}
       </dd>
     </div>

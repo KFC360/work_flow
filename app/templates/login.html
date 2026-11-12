@@ -5,79 +5,80 @@
   {% include "partials/head_assets.html" %}
   <title>登录 · GitHub 工作流</title>
 </head>
-<body class="min-h-dvh bg-slate-50 text-slate-900 antialiased">
+<body class="min-h-dvh bg-base-200 text-base-content antialiased">
   <main class="mx-auto flex min-h-dvh w-full max-w-6xl flex-col justify-center px-4 py-10 sm:px-6 lg:px-8">
     <div class="grid items-center gap-10 lg:grid-cols-2">
       <section class="order-1">
         <div class="flex items-center gap-3">
-          <span class="flex h-11 w-11 items-center justify-center rounded-xl bg-sky-700 text-white">
+          <span class="flex h-11 w-11 items-center justify-center rounded-xl bg-primary text-primary-content">
             {{ icon('webhook', 'h-6 w-6') }}
           </span>
           <div>
-            <p class="text-lg font-semibold tracking-tight">GitHub 工作流</p>
-            <p class="text-xs text-slate-500">内部运维台</p>
+            <p class="text-lg font-semibold tracking-tight text-base-content">GitHub 工作流</p>
+            <p class="text-xs text-base-content/60">内部运维台</p>
           </div>
         </div>
-        <h1 class="mt-8 text-3xl font-semibold tracking-tight text-slate-900">从 Issue 到 Pull Request</h1>
-        <p class="mt-3 max-w-md text-sm leading-6 text-slate-600">按公司、仓库和 Issue 跟进设计文档、代码生成与 PR 的完整流水线。仅限授权账号使用。</p>
-        <ol class="mt-6 flex flex-wrap gap-2 text-xs text-slate-600" aria-label="处理流程">
+        <h1 class="mt-8 text-3xl font-semibold tracking-tight text-base-content">从 Issue 到 Pull Request</h1>
+        <p class="mt-3 max-w-md text-sm leading-6 text-base-content/70">按公司、仓库和 Issue 跟进设计文档、代码生成与 PR 的完整流水线。仅限授权账号使用。</p>
+        <ol class="mt-6 flex flex-wrap gap-2 text-xs text-base-content/70" aria-label="处理流程">
           {% for step in ['公司', '仓库', 'Issue', '设计文档', '代码', 'PR'] %}
-          <li class="rounded-full border border-slate-200 bg-white px-2.5 py-1">{{ step }}</li>
+          <li class="badge badge-outline">{{ step }}</li>
           {% endfor %}
         </ol>
-        <p class="mt-6 flex items-center gap-1.5 text-xs text-slate-500">{{ icon('lock', 'h-4 w-4') }}<span>仅限授权账号访问</span></p>
+        <p class="mt-6 flex items-center gap-1.5 text-xs text-base-content/60">{{ icon('lock', 'h-4 w-4') }}<span>仅限授权账号访问</span></p>
       </section>
 
       <section class="order-2 w-full lg:justify-self-end">
-        <div class="gw-card mx-auto w-full max-w-md p-6 sm:p-8">
-          <h2 class="text-xl font-semibold tracking-tight text-slate-900">登录</h2>
-          <p class="mt-1 text-sm text-slate-600">使用管理员账号进入控制台。</p>
+        <div class="card card-border mx-auto w-full max-w-md bg-base-100 shadow-sm">
+          <div class="card-body p-6 sm:p-8">
+            <h2 class="card-title text-xl">登录</h2>
+            <p class="text-sm text-base-content/70">使用管理员账号进入控制台。</p>
 
-          {% if error %}
-          <div class="alert alert-error mt-4 flex items-start gap-2 text-sm" role="alert">
-            {{ icon('alert-triangle', 'h-5 w-5 shrink-0') }}
-            <span>{{ error }}</span>
-          </div>
-          {% endif %}
-
-          <form method="post" action="/login" class="mt-5 space-y-4">
-            <div>
-              <label class="mb-1 block text-sm font-medium text-slate-800" for="username">用户名</label>
-              <input
-                id="username"
-                name="username"
-                type="text"
-                autocomplete="username"
-                required
-                value="{{ username or '' }}"
-                class="input input-bordered w-full"
-                {% if error %}aria-invalid="true" aria-describedby="login-error" autofocus{% endif %}
-              />
+            {% if error %}
+            <div class="alert alert-error mt-4 flex items-start gap-2 text-sm" role="alert">
+              {{ icon('alert-triangle', 'h-5 w-5 shrink-0') }}
+              <span>{{ error }}</span>
             </div>
-            <div>
-              <label class="mb-1 block text-sm font-medium text-slate-800" for="password">口令</label>
-              <div class="relative">
+            {% endif %}
+
+            <form method="post" action="/login" class="mt-5 space-y-4">
+              <fieldset class="fieldset">
+                <legend class="sr-only">登录凭据</legend>
+                <label class="label" for="username">用户名</label>
                 <input
-                  id="password"
-                  name="password"
-                  type="password"
-                  autocomplete="current-password"
+                  id="username"
+                  name="username"
+                  type="text"
+                  autocomplete="username"
                   required
-                  class="input input-bordered w-full pr-11"
-                  {% if error %}aria-invalid="true" aria-describedby="login-error"{% endif %}
+                  value="{{ username or '' }}"
+                  class="input w-full"
+                  {% if error %}aria-invalid="true" aria-describedby="login-error" autofocus{% endif %}
                 />
-                <button
-                  type="button"
-                  id="password-toggle"
-                  class="btn btn-ghost btn-sm absolute right-1 top-1/2 -translate-y-1/2"
-                  aria-label="显示口令"
-                  aria-pressed="false"
-                ><span id="password-toggle-label">显示</span></button>
-              </div>
-              {% if error %}<p id="login-error" class="mt-1 text-sm text-red-600">{{ error }}</p>{% endif %}
-            </div>
-            <button type="submit" class="btn btn-primary w-full gap-1.5" data-gw-submit>{{ icon('arrow-right') }}<span>登录</span></button>
-          </form>
+                <label class="label" for="password">口令</label>
+                <div class="relative">
+                  <input
+                    id="password"
+                    name="password"
+                    type="password"
+                    autocomplete="current-password"
+                    required
+                    class="input w-full pr-11"
+                    {% if error %}aria-invalid="true" aria-describedby="login-error"{% endif %}
+                  />
+                  <button
+                    type="button"
+                    id="password-toggle"
+                    class="btn btn-ghost btn-sm absolute right-1 top-1/2 -translate-y-1/2"
+                    aria-label="显示口令"
+                    aria-pressed="false"
+                  ><span id="password-toggle-label">显示</span></button>
+                </div>
+                {% if error %}<p id="login-error" class="text-sm text-error">{{ error }}</p>{% endif %}
+              </fieldset>
+              <button type="submit" class="btn btn-primary w-full gap-1.5" data-gw-submit>{{ icon('arrow-right') }}<span>登录</span></button>
+            </form>
+          </div>
         </div>
       </section>
     </div>

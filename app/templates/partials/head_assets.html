@@ -6,224 +6,128 @@
   href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&family=Source+Sans+3:wght@400;500;600;700&display=swap"
   rel="stylesheet"
 />
-<link href="https://cdn.jsdelivr.net/npm/daisyui@4.12.14/dist/full.min.css" rel="stylesheet" type="text/css" />
-<script src="https://cdn.tailwindcss.com"></script>
-<script>
-  tailwind.config = {
-    theme: {
-      extend: {
-        fontFamily: {
-          sans: [
-            "Source Sans 3",
-            "system-ui",
-            "-apple-system",
-            "Segoe UI",
-            "PingFang SC",
-            "Microsoft YaHei",
-            "sans-serif",
-          ],
-          mono: [
-            "JetBrains Mono",
-            "ui-monospace",
-            "SFMono-Regular",
-            "Menlo",
-            "Consolas",
-            "monospace",
-          ],
-        },
-      },
-    },
-  };
-</script>
+
+<!-- daisyUI 5：组件与基础样式；themes.css 提供 corporate 等内置主题 -->
+<link href="https://cdn.jsdelivr.net/npm/daisyui@5.7.50" rel="stylesheet" type="text/css" />
+<link href="https://cdn.jsdelivr.net/npm/daisyui@5.7.50/themes.css" rel="stylesheet" type="text/css" />
+<!-- Tailwind 4 浏览器版：仅生成工具类，不再使用构建期配置 -->
+<script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+
+<style type="text/tailwindcss">
+  @theme {
+    --font-sans: "Source Sans 3", system-ui, -apple-system, "Segoe UI",
+      "PingFang SC", "Microsoft YaHei", sans-serif;
+    --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo,
+      Consolas, monospace;
+  }
+</style>
+
 <style>
-  :root {
-    --gw-bg: #f8fafc;
-    --gw-surface: #ffffff;
-    --gw-ink: #0f172a;
-    --gw-muted: #475569;
-    --gw-line: #e2e8f0;
-    --gw-accent: #0369a1;
-    --gw-accent-soft: #e0f2fe;
-    --gw-success: #059669;
-    --gw-warning: #d97706;
-    --gw-danger: #dc2626;
-    --gw-info: #0284c7;
-  }
-
-  html {
-    background-color: var(--gw-bg);
-  }
-
-  body {
-    background-color: var(--gw-bg);
-    color: var(--gw-ink);
-    font-family: "Source Sans 3", system-ui, -apple-system, "Segoe UI", "PingFang SC",
-      "Microsoft YaHei", sans-serif;
-  }
-
-  .font-mono-data,
-  code,
-  pre,
-  .font-mono {
-    font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  }
-
-  .gw-nav-link {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.4rem;
-    padding: 0.5rem 0.75rem;
-    border-radius: 0.5rem;
-    border-bottom: 2px solid transparent;
-    font-size: 0.875rem;
-    font-weight: 500;
-    color: var(--gw-muted);
-    cursor: pointer;
-  }
-
-  .gw-nav-link:hover {
-    color: var(--gw-ink);
-    background-color: #f1f5f9;
-  }
-
-  .gw-nav-link[aria-current="page"] {
-    color: var(--gw-accent);
-    background-color: var(--gw-accent-soft);
-    border-bottom-color: var(--gw-accent);
-  }
-
-  .gw-card {
-    background-color: var(--gw-surface);
-    border: 1px solid var(--gw-line);
-    border-radius: 0.75rem;
-    box-shadow: 0 1px 2px rgba(15, 23, 42, 0.05);
-  }
-
-  .gw-table thead th {
-    font-size: 0.75rem;
-    font-weight: 600;
-    letter-spacing: 0.03em;
-    text-transform: uppercase;
-    color: #64748b;
-    background-color: #f8fafc;
-  }
-
-  .gw-table tbody tr {
-    border-top: 1px solid var(--gw-line);
-  }
-
-  .gw-table tbody tr:hover {
-    background-color: #f8fafc;
-  }
-
-  .gw-table td,
-  .gw-table th {
-    padding-top: 0.75rem;
-    padding-bottom: 0.75rem;
-  }
-
-  .gw-markdown {
+  /* daisyUI 5 没有 Markdown / prose 正文组件；这里只约束 Issue 正文与设计文档内容排版。 */
+  .md-content {
     min-width: 0;
     overflow-wrap: anywhere;
     font-size: 0.875rem;
     line-height: 1.7;
-    color: var(--gw-ink);
+    color: var(--color-base-content);
   }
 
-  .gw-markdown > :first-child {
+  .md-content > :first-child {
     margin-top: 0;
   }
 
-  .gw-markdown > :last-child {
+  .md-content > :last-child {
     margin-bottom: 0;
   }
 
-  .gw-markdown p,
-  .gw-markdown ul,
-  .gw-markdown ol,
-  .gw-markdown blockquote,
-  .gw-markdown pre,
-  .gw-markdown table,
-  .gw-markdown hr {
+  .md-content p,
+  .md-content ul,
+  .md-content ol,
+  .md-content blockquote,
+  .md-content pre,
+  .md-content table,
+  .md-content hr {
     margin-top: 0.75rem;
     margin-bottom: 0.75rem;
   }
 
-  .gw-markdown h3,
-  .gw-markdown h4,
-  .gw-markdown h5,
-  .gw-markdown h6 {
+  .md-content h3,
+  .md-content h4,
+  .md-content h5,
+  .md-content h6 {
     margin-top: 1.25rem;
     margin-bottom: 0.5rem;
-    color: var(--gw-ink);
+    color: var(--color-base-content);
     font-weight: 600;
     line-height: 1.4;
   }
 
-  .gw-markdown h3 {
+  .md-content h3 {
     font-size: 1rem;
   }
 
-  .gw-markdown h4 {
+  .md-content h4 {
     font-size: 0.9375rem;
   }
 
-  .gw-markdown h5,
-  .gw-markdown h6 {
+  .md-content h5,
+  .md-content h6 {
     font-size: 0.875rem;
   }
 
-  .gw-markdown ul,
-  .gw-markdown ol {
+  .md-content ul,
+  .md-content ol {
     padding-left: 1.5rem;
   }
 
-  .gw-markdown ul {
+  .md-content ul {
     list-style: disc;
   }
 
-  .gw-markdown ol {
+  .md-content ol {
     list-style: decimal;
   }
 
-  .gw-markdown li + li {
+  .md-content li + li {
     margin-top: 0.25rem;
   }
 
-  .gw-markdown li > ul,
-  .gw-markdown li > ol {
+  .md-content li > ul,
+  .md-content li > ol {
     margin-top: 0.25rem;
     margin-bottom: 0.25rem;
   }
 
-  .gw-markdown blockquote {
-    border-left: 4px solid var(--gw-line);
+  .md-content blockquote {
+    border-left: 4px solid var(--color-base-300);
     padding-left: 1rem;
-    color: var(--gw-muted);
+    color: color-mix(in oklch, var(--color-base-content) 70%, transparent);
   }
 
-  .gw-markdown code {
+  .md-content code {
     border-radius: 0.25rem;
-    background-color: #f1f5f9;
+    background-color: var(--color-base-200);
     padding: 0.1rem 0.3rem;
+    font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace);
     font-size: 0.85em;
     overflow-wrap: anywhere;
   }
 
-  .gw-markdown pre {
+  .md-content pre {
     max-width: 100%;
     overflow-x: auto;
-    border: 1px solid var(--gw-line);
+    border: 1px solid var(--color-base-300);
     border-radius: 0.5rem;
-    background-color: #f8fafc;
+    background-color: var(--color-base-200);
     padding: 0.75rem;
+    font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace);
     font-size: 0.75rem;
     line-height: 1.6;
     white-space: pre;
     overflow-wrap: normal;
   }
 
-  .gw-markdown pre code {
+  .md-content pre code {
     border-radius: 0;
     background: transparent;
     padding: 0;
@@ -231,21 +135,21 @@
     overflow-wrap: normal;
   }
 
-  .gw-markdown a {
-    color: #0369a1;
+  .md-content a {
+    color: var(--color-primary);
     text-decoration: underline;
     text-underline-offset: 2px;
   }
 
-  .gw-markdown a:hover {
-    color: #075985;
+  .md-content a:hover {
+    opacity: 0.8;
   }
 
-  .gw-markdown hr {
-    border-top: 1px solid var(--gw-line);
+  .md-content hr {
+    border-top: 1px solid var(--color-base-300);
   }
 
-  .gw-markdown table {
+  .md-content table {
     display: block;
     width: 100%;
     max-width: 100%;
@@ -254,39 +158,27 @@
     font-size: 0.8125rem;
   }
 
-  .gw-markdown th,
-  .gw-markdown td {
-    border: 1px solid var(--gw-line);
+  .md-content th,
+  .md-content td {
+    border: 1px solid var(--color-base-300);
     padding: 0.375rem 0.625rem;
     text-align: left;
     vertical-align: top;
   }
 
-  .gw-markdown thead th {
-    background-color: #f8fafc;
+  .md-content thead th {
+    background-color: var(--color-base-200);
     font-weight: 600;
-    color: var(--gw-ink);
+    color: var(--color-base-content);
   }
 
+  /* daisyUI 5 组件自带焦点样式，原生链接与自定义可聚焦元素仍需统一可见焦点兜底。 */
   :where(a, button, input, select, textarea, summary, [tabindex]):focus-visible {
-    outline: 2px solid var(--gw-accent);
+    outline: 2px solid var(--color-primary);
     outline-offset: 2px;
   }
 
-  a,
-  button {
-    cursor: pointer;
-  }
-
-  button:disabled,
-  .btn-disabled {
-    cursor: not-allowed;
-  }
-
-  [id] {
-    scroll-margin-top: 5.5rem;
-  }
-
+  /* daisyUI 5 没有全局 reduced-motion 开关；保留无障碍兜底。 */
   @media (prefers-reduced-motion: reduce) {
     *,
     *::before,
@@ -296,5 +188,10 @@
       transition-duration: 0.01ms !important;
       scroll-behavior: auto !important;
     }
+  }
+
+  /* daisyUI 5 没有 sticky navbar 的全局锚点偏移能力。 */
+  [id] {
+    scroll-margin-top: 5.5rem;
   }
 </style>

@@ -10,7 +10,7 @@
 - Webhook 验签后写入 **Inbox**（`webhook_delivery`）并立即 **202**；Worker 自行退避重试 GitHub 同步
 - **v1 只运行一个 Worker**：Inbox 循环 + Pipeline 循环；Pipeline 全局同时只跑一条代理任务
 - 代理在 `WORKTREE_ROOT` 下的隔离 git worktree 中运行，不直接污染仓库页登记的 `local_path`
-- 全站代理写在项目根 `config.yaml`（`opencode` | `claude`），设置页原子替换
+- 全站代理与邮件发件（非密钥）写在项目根 `config.yaml`，设置页同一表单原子替换；SMTP 密码只走环境变量 `SMTP_PASSWORD`
 - **文档驱动**：基石 `{doc_dir}/README.md` + 迭代 `{doc_dir}/v{n}-{issue}/design.md`；基石缺失时警告不阻断
 - **可观测性**：Issue 详情轮询任务日志尾部（无需 SSH）；设置页展示 Worker 心跳（`logs/worker-heartbeat.json`）
 
@@ -31,7 +31,7 @@
 ```bash
 cp .env.example .env
 cp config.yaml.example config.yaml
-# 填写 DATABASE_URL、JWT_SECRET_KEY、GITHUB_*、APP_ADMIN_PASSWORD
+# 填写 DATABASE_URL、JWT_SECRET_KEY、GITHUB_*、APP_ADMIN_PASSWORD、SMTP_PASSWORD
 
 # uv sync：自动创建 .venv 并安装依赖
 uv sync --extra dev
@@ -49,6 +49,28 @@ uv run python -m app.tasks.worker
 | Webhook | `POST /api/v1/github-callback/` |
 | 健康检查 | `GET /healthz` |
 | 登录 | `GET/POST /login`，API `POST /token` |
+
+## 邮件发件
+
+`config.yaml` 的 `mail` 段只保存非密钥参数；真实密码只放环境变量 `SMTP_PASSWORD`，不写进 yaml、数据库、页面或日志。
+
+```yaml
+mail:
+  enabled: false
+  smtp_host: smtp.example.com
+  smtp_port: 587
+  security: starttls      # ssl | starttls | none
+  username: ""            # 可为空（匿名中继）；密码仍要求 SMTP_PASSWORD 非空
+  from_address: notify@example.com
+  from_name: GitHub 工作流
+  default_to: ""
+```
+
+- 设置页 `/settings` 同一表单保存代理与邮件配置；密码只显示「已配置 / 未配置」，不提供输入框。
+- 修改 `.env` 里的 `SMTP_PASSWORD` 后需重启 Web / Worker 才生效。
+- 页面「发送测试邮件」同步发送，最长约 10 秒；只使用已保存配置，留空收件人时用 `mail.default_to`。
+- 业务代码复用 `app/services/mail.py` 的 `send_mail(to, subject, html_body, *, text_fallback=None)`；HTML 在发送入口按白名单消毒，失败抛 `MailError`。
+- 未启用、缺主机 / 端口 / 发件人、缺 `SMTP_PASSWORD` 或收件人时返回明确短消息；SMTP 原始异常只写日志。
 
 ## 生产部署
 

@@ -20,6 +20,7 @@
 - 迭代文档路径：`docs/v{n}-{issue}/design.md`；基石入口：`docs/README.md`；完整设计：`docs/architecture/design.md`。
 - Issue 详情可轮询任务日志尾部；Worker 心跳：`logs/worker-heartbeat.json`。
 - Worker 内置 OpenCode skills：`agent_skills/`（`documentation`、`ui-ux-pro-max`、`karpathy-guidelines`），部署挂到 `~/.config/opencode/skills`，不写进目标仓。
+- 设置页管理全站代理与邮件发件（非密钥）；SMTP 密码只走环境变量 `SMTP_PASSWORD`，页面只显示「已配置 / 未配置」，试发使用已保存配置。
 
 ## 文档索引
 

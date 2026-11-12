@@ -4,7 +4,7 @@
 {% block title %}设置 · GitHub 工作流{% endblock %}
 
 {% block page_header %}
-{{ page_header('设置', '全站代理只在这里选择；修改立即对之后的任务生效。', '系统') }}
+{{ page_header('设置', '全站代理与邮件发件只在这里配置；修改立即对之后的任务生效。', '系统') }}
 {% endblock %}
 
 {% block content %}
@@ -15,22 +15,65 @@
 </div>
 {% endif %}
 
+{% if config_warning %}
+<div class="alert alert-warning mb-4 flex items-start gap-2 text-sm" role="alert">
+  {{ icon('alert-triangle', 'h-5 w-5 shrink-0') }}
+  <span>{{ config_warning }}</span>
+</div>
+{% endif %}
+
+{% if field_errors %}
+<div class="alert alert-error mb-4 flex items-start gap-2 text-sm" role="alert">
+  {{ icon('alert-triangle', 'h-5 w-5 shrink-0') }}
+  <div class="min-w-0">
+    <p class="font-semibold">请修正以下问题后保存：</p>
+    <ul class="mt-1 list-inside list-disc space-y-0.5">
+      {% for message in field_errors.values() %}
+      <li>{{ message }}</li>
+      {% endfor %}
+    </ul>
+  </div>
+</div>
+{% endif %}
+
+{% if mail_config_errors %}
+<div class="alert alert-error mb-4 flex items-start gap-2 text-sm" role="alert">
+  {{ icon('alert-triangle', 'h-5 w-5 shrink-0') }}
+  <div class="min-w-0">
+    <p class="font-semibold">邮件配置不完整，试发不可用：</p>
+    <ul class="mt-1 list-inside list-disc space-y-0.5">
+      {% for message in mail_config_errors %}
+      <li>{{ message }}</li>
+      {% endfor %}
+    </ul>
+  </div>
+</div>
+{% endif %}
+
+{% for warning in mail_warnings %}
+<div class="alert alert-warning mb-4 flex items-start gap-2 text-sm" role="alert">
+  {{ icon('alert-triangle', 'h-5 w-5 shrink-0') }}
+  <span>{{ warning }}</span>
+</div>
+{% endfor %}
+
 <div class="grid gap-6 lg:grid-cols-3">
-  <section class="card card-border order-1 bg-base-100 shadow-sm lg:col-span-2" aria-labelledby="agent-title">
+  <section class="card card-border order-1 bg-base-100 shadow-sm lg:col-span-2" aria-labelledby="config-title">
     <div class="card-body p-5">
-      <h2 id="agent-title" class="card-title mb-1 text-base">
-        {{ icon('settings', 'h-5 w-5 text-base-content/60') }}<span>全站代理</span>
+      <h2 id="config-title" class="card-title mb-1 text-base">
+        {{ icon('settings', 'h-5 w-5 text-base-content/60') }}<span>全站配置</span>
       </h2>
-      <p class="mb-4 text-sm leading-6 text-base-content/70">所有仓库共用这一选择；已开始的任务继续使用任务行上记录的代理。</p>
-      <form method="post" action="/settings" class="space-y-5">
+      <p class="mb-4 text-sm leading-6 text-base-content/70">代理由所有仓库共用；已开始的任务继续使用任务行上记录的代理。邮件发件只保存非密钥参数。</p>
+      <form method="post" action="/settings" class="space-y-6">
         <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+
         <fieldset class="fieldset">
-          <legend class="sr-only">选择代理</legend>
+          <legend class="fieldset-legend">全站代理</legend>
           <div class="grid gap-3 sm:grid-cols-2">
             <label class="card card-border cursor-pointer bg-base-100 transition-colors {% if agent == 'opencode' %}border-primary bg-primary/5{% else %}hover:bg-base-200{% endif %}">
               <div class="card-body p-4">
                 <div class="flex items-start gap-3">
-                  <input type="radio" name="agent" value="opencode" class="radio radio-primary mt-0.5" {% if agent == 'opencode' %}checked{% endif %} required />
+                  <input type="radio" name="agent" value="opencode" class="radio radio-primary mt-0.5" {% if agent == 'opencode' %}checked{% endif %} {% if first_error == 'agent' %}autofocus{% endif %} />
                   <span class="min-w-0">
                     <span class="flex flex-wrap items-center gap-2">
                       <span class="text-sm font-semibold text-base-content">opencode</span>
@@ -56,7 +99,138 @@
               </div>
             </label>
           </div>
+          {% if field_errors.agent %}
+          <p class="mt-1 text-sm text-error">{{ field_errors.agent }}</p>
+          {% endif %}
         </fieldset>
+
+        <div class="divider my-0"></div>
+
+        <fieldset class="fieldset" aria-labelledby="mail-title">
+          <legend id="mail-title" class="fieldset-legend">邮件发件</legend>
+
+          <label class="label cursor-pointer justify-start gap-3" for="mail_enabled">
+            <input
+              id="mail_enabled"
+              name="mail_enabled"
+              type="checkbox"
+              class="toggle toggle-primary"
+              {% if mail_form['enabled'] %}checked{% endif %}
+            />
+            <span class="text-sm font-medium">启用邮件发件</span>
+          </label>
+          <p class="mt-1 text-xs leading-5 text-base-content/60">未启用时不会外发邮件；试发接口也会直接拒绝。</p>
+
+          <div class="mt-4 rounded-box border border-base-300 bg-base-200/40 p-3">
+            <div class="flex flex-wrap items-center gap-2">
+              <span class="text-sm font-medium">SMTP 密码</span>
+              {% if smtp_password_configured %}
+              <span class="badge badge-sm badge-success gap-1">{{ icon('check-circle', 'h-3.5 w-3.5') }}<span>已配置</span></span>
+              {% else %}
+              <span class="badge badge-sm badge-warning gap-1">{{ icon('alert-triangle', 'h-3.5 w-3.5') }}<span>未配置</span></span>
+              {% endif %}
+            </div>
+            <p class="mt-1 text-xs leading-5 text-base-content/60">密码只从环境变量 <code class="rounded bg-base-200 px-1 py-0.5 font-mono">SMTP_PASSWORD</code> 读取，页面不显示也不修改。修改 <code class="rounded bg-base-200 px-1 py-0.5 font-mono">.env</code> 后需重启 Web / Worker。</p>
+          </div>
+
+          <div class="mt-4 grid gap-4 sm:grid-cols-2">
+            <div>
+              <label class="label" for="mail_smtp_host">SMTP 主机</label>
+              <input
+                id="mail_smtp_host"
+                name="mail_smtp_host"
+                class="input w-full font-mono text-sm {% if field_errors.mail_smtp_host %}input-error{% endif %}"
+                value="{{ mail_form['smtp_host'] }}"
+                placeholder="smtp.example.com"
+                autocomplete="off"
+                {% if first_error == 'mail_smtp_host' %}autofocus{% endif %}
+              />
+              {% if field_errors.mail_smtp_host %}<p class="mt-1 text-sm text-error">{{ field_errors.mail_smtp_host }}</p>{% endif %}
+            </div>
+            <div>
+              <label class="label" for="mail_smtp_port">SMTP 端口</label>
+              <input
+                id="mail_smtp_port"
+                name="mail_smtp_port"
+                type="number"
+                inputmode="numeric"
+                min="1"
+                max="65535"
+                class="input w-full font-mono text-sm {% if field_errors.mail_smtp_port %}input-error{% endif %}"
+                value="{{ mail_form['smtp_port'] }}"
+                {% if first_error == 'mail_smtp_port' %}autofocus{% endif %}
+              />
+              {% if field_errors.mail_smtp_port %}<p class="mt-1 text-sm text-error">{{ field_errors.mail_smtp_port }}</p>{% endif %}
+            </div>
+            <div>
+              <label class="label" for="mail_security">加密方式</label>
+              <select
+                id="mail_security"
+                name="mail_security"
+                class="select w-full {% if field_errors.mail_security %}select-error{% endif %}"
+                {% if first_error == 'mail_security' %}autofocus{% endif %}
+              >
+                <option value="starttls" {% if mail_form['security'] == 'starttls' %}selected{% endif %}>STARTTLS（推荐，通常端口 587）</option>
+                <option value="ssl" {% if mail_form['security'] == 'ssl' %}selected{% endif %}>SSL/TLS（通常端口 465）</option>
+                <option value="none" {% if mail_form['security'] == 'none' %}selected{% endif %}>不加密（风险）</option>
+              </select>
+              {% if field_errors.mail_security %}<p class="mt-1 text-sm text-error">{{ field_errors.mail_security }}</p>{% endif %}
+            </div>
+            <div>
+              <label class="label" for="mail_username">SMTP 用户名</label>
+              <input
+                id="mail_username"
+                name="mail_username"
+                class="input w-full font-mono text-sm"
+                value="{{ mail_form['username'] }}"
+                autocomplete="username"
+                placeholder="可为空（匿名中继）"
+              />
+            </div>
+            <div>
+              <label class="label" for="mail_from_address">发件人地址</label>
+              <input
+                id="mail_from_address"
+                name="mail_from_address"
+                type="email"
+                class="input w-full font-mono text-sm {% if field_errors.mail_from_address %}input-error{% endif %}"
+                value="{{ mail_form['from_address'] }}"
+                autocomplete="off"
+                placeholder="notify@example.com"
+                {% if first_error == 'mail_from_address' %}autofocus{% endif %}
+              />
+              {% if field_errors.mail_from_address %}<p class="mt-1 text-sm text-error">{{ field_errors.mail_from_address }}</p>{% endif %}
+            </div>
+            <div>
+              <label class="label" for="mail_from_name">发件人显示名</label>
+              <input
+                id="mail_from_name"
+                name="mail_from_name"
+                class="input w-full text-sm {% if field_errors.mail_from_name %}input-error{% endif %}"
+                value="{{ mail_form['from_name'] }}"
+                autocomplete="off"
+                placeholder="GitHub 工作流"
+                {% if first_error == 'mail_from_name' %}autofocus{% endif %}
+              />
+              {% if field_errors.mail_from_name %}<p class="mt-1 text-sm text-error">{{ field_errors.mail_from_name }}</p>{% endif %}
+            </div>
+            <div class="sm:col-span-2">
+              <label class="label" for="mail_default_to">默认收件人</label>
+              <input
+                id="mail_default_to"
+                name="mail_default_to"
+                class="input w-full font-mono text-sm {% if field_errors.mail_default_to %}input-error{% endif %}"
+                value="{{ mail_form['default_to'] }}"
+                autocomplete="off"
+                placeholder="可选；试发留空时使用"
+                {% if first_error == 'mail_default_to' %}autofocus{% endif %}
+              />
+              {% if field_errors.mail_default_to %}<p class="mt-1 text-sm text-error">{{ field_errors.mail_default_to }}</p>{% endif %}
+              <p class="mt-1 text-xs leading-5 text-base-content/60">可选，多个地址用英文逗号分隔。</p>
+            </div>
+          </div>
+        </fieldset>
+
         <button type="submit" class="btn btn-primary btn-sm gap-1.5" data-gw-submit>
           {{ icon('check') }}<span>保存</span>
         </button>
@@ -95,6 +269,33 @@
         <span>Worker 可能未启动或已停止；任务不会执行。</span>
       </div>
       {% endif %}
+    </div>
+  </section>
+
+  <section class="card card-border order-3 bg-base-100 shadow-sm lg:col-span-3" aria-labelledby="mail-test-title">
+    <div class="card-body p-5">
+      <h2 id="mail-test-title" class="card-title mb-1 text-base">
+        {{ icon('server', 'h-5 w-5 text-base-content/60') }}<span>发送测试邮件</span>
+      </h2>
+      <p class="mb-4 text-sm leading-6 text-base-content/70">试发使用已保存的配置，不会读取上方尚未保存的字段。发送为同步操作，最长约 10 秒。</p>
+      <form method="post" action="/settings/mail/test" class="flex flex-col gap-3 sm:flex-row sm:items-end">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+        <div class="w-full sm:max-w-md">
+          <label class="label" for="mail_test_to">收件地址</label>
+          <input
+            id="mail_test_to"
+            name="to"
+            type="email"
+            class="input w-full font-mono text-sm"
+            placeholder="{% if saved_default_to %}{{ saved_default_to }}{% else %}name@example.com{% endif %}"
+            autocomplete="off"
+          />
+          <p class="mt-1 text-xs leading-5 text-base-content/60">留空时使用已保存的默认收件人{% if saved_default_to %}（{{ saved_default_to }}）{% endif %}。</p>
+        </div>
+        <button type="submit" class="btn btn-outline btn-sm gap-1.5" data-gw-submit>
+          {{ icon('webhook') }}<span>发送测试邮件</span>
+        </button>
+      </form>
     </div>
   </section>
 </div>

@@ -21,7 +21,10 @@ class GitHubClient:
         self._owns = client is None
         settings = get_settings()
         headers = {
-            "Accept": "application/vnd.github+json",
+            "Accept": (
+                "application/vnd.github+json, "
+                "application/vnd.github.mercy-preview+json"
+            ),
             "X-GitHub-Api-Version": "2022-11-28",
         }
         if settings.github_token:

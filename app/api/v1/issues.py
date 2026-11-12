@@ -128,7 +128,8 @@ def issue_list(
         for i in issues
     ]
     status_options = list(STATUS_LABELS.items())
-    if status and status not in STATUS_LABELS:
+    status_options.append((issue_crud.UNFINISHED_STATUS, "未结束（未建 PR）"))
+    if status and status not in {value for value, _ in status_options}:
         status_options.append((status, status))
     has_filters = bool(kind or status) or (github_state not in (None, "", "open"))
     return templates.TemplateResponse(

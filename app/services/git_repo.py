@@ -2,11 +2,19 @@ from __future__ import annotations
 
 import re
 import subprocess
+from dataclasses import dataclass
 from pathlib import Path
 
 
 class GitError(Exception):
     pass
+
+
+@dataclass(frozen=True)
+class OriginInfo:
+    state: str  # none | match | mismatch | unavailable
+    origin: str | None
+    detail: str
 
 
 ISSUE_TRAILER = "GitHub-Workflow-Issue-ID"
@@ -34,6 +42,30 @@ def parse_origin_full_name(url: str) -> str | None:
     if m:
         return m.group(1)
     return None
+
+
+def inspect_origin(local_path: str | Path | None, expected_full_name: str) -> OriginInfo:
+    """Read-only origin check for the repo page. Never raises; never fetches."""
+    if not local_path:
+        return OriginInfo(state="none", origin=None, detail="")
+    path = Path(local_path)
+    try:
+        resolved = path.resolve()
+        if not resolved.is_dir():
+            return OriginInfo(state="unavailable", origin=None, detail="路径不存在或不是目录")
+        top = run_git(["rev-parse", "--show-toplevel"], cwd=resolved)
+        if Path(top).resolve() != resolved:
+            return OriginInfo(state="unavailable", origin=None, detail="路径不是 git 顶层目录")
+        origin = run_git(["remote", "get-url", "origin"], cwd=resolved)
+    except (GitError, OSError):
+        return OriginInfo(state="unavailable", origin=None, detail="无法读取 origin")
+
+    full = parse_origin_full_name(origin)
+    if full is None:
+        return OriginInfo(state="mismatch", origin=origin, detail="origin 不是可解析的 GitHub 地址")
+    if full != expected_full_name:
+        return OriginInfo(state="mismatch", origin=origin, detail=f"origin 指向 {full}")
+    return OriginInfo(state="match", origin=origin, detail="")
 
 
 def validate_local_path(local_path: str, expected_full_name: str) -> None:

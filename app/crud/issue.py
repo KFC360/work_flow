@@ -1,12 +1,45 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
 from datetime import datetime, timezone
 
-from sqlalchemy import func, select
+from sqlalchemy import and_, func, select
 from sqlalchemy.orm import Session
 
 from app.models.issue import Issue
 from app.services.issues import classify_labels, kind_locked
+
+# Display-only list filter value: not stored on issue.status, not part of the state machine.
+UNFINISHED_STATUS = "unfinished"
+
+
+@dataclass(frozen=True)
+class RepoOpenSummary:
+    feature_unfinished: int
+    support_open: int
+    failed: int
+
+
+def _status_condition(status: str):
+    if status == UNFINISHED_STATUS:
+        return Issue.status != "pr_opened"
+    return Issue.status == status
+
+
+def _filters(
+    *,
+    kind: str | None = None,
+    status: str | None = None,
+    github_state: str | None = None,
+):
+    conditions = [Issue.deleted_at.is_(None)]
+    if kind:
+        conditions.append(Issue.kind == kind)
+    if status:
+        conditions.append(_status_condition(status))
+    if github_state:
+        conditions.append(Issue.github_state == github_state)
+    return and_(*conditions)
 
 
 def get(db: Session, issue_id: int) -> Issue | None:
@@ -117,13 +150,10 @@ def list_for_repo(
     offset: int = 0,
     limit: int = 50,
 ) -> list[Issue]:
-    stmt = select(Issue).where(Issue.repository_id == repository_id, Issue.deleted_at.is_(None))
-    if kind:
-        stmt = stmt.where(Issue.kind == kind)
-    if status:
-        stmt = stmt.where(Issue.status == status)
-    if github_state:
-        stmt = stmt.where(Issue.github_state == github_state)
+    stmt = select(Issue).where(
+        Issue.repository_id == repository_id,
+        _filters(kind=kind, status=status, github_state=github_state),
+    )
     stmt = stmt.order_by(Issue.number.desc()).offset(offset).limit(limit)
     return list(db.scalars(stmt))
 
@@ -136,16 +166,39 @@ def count_for_repo(
     status: str | None = None,
     github_state: str | None = "open",
 ) -> int:
-    stmt = select(func.count()).select_from(Issue).where(
-        Issue.repository_id == repository_id, Issue.deleted_at.is_(None)
+    stmt = (
+        select(func.count())
+        .select_from(Issue)
+        .where(
+            Issue.repository_id == repository_id,
+            _filters(kind=kind, status=status, github_state=github_state),
+        )
     )
-    if kind:
-        stmt = stmt.where(Issue.kind == kind)
-    if status:
-        stmt = stmt.where(Issue.status == status)
-    if github_state:
-        stmt = stmt.where(Issue.github_state == github_state)
     return int(db.scalar(stmt) or 0)
+
+
+def repo_open_summary(db: Session, repository_id: int) -> RepoOpenSummary:
+    """Counts for the repo card; same predicates as the Issue list filters."""
+    row = db.execute(
+        select(
+            func.count()
+            .filter(_filters(kind="feature", status=UNFINISHED_STATUS, github_state="open"))
+            .label("feature_unfinished"),
+            func.count()
+            .filter(_filters(kind="support", status="support_open", github_state="open"))
+            .label("support_open"),
+            func.count()
+            .filter(_filters(status="failed", github_state="open"))
+            .label("failed"),
+        )
+        .select_from(Issue)
+        .where(Issue.repository_id == repository_id)
+    ).one()
+    return RepoOpenSummary(
+        feature_unfinished=int(row.feature_unfinished or 0),
+        support_open=int(row.support_open or 0),
+        failed=int(row.failed or 0),
+    )
 
 
 def set_kind(db: Session, issue: Issue, kind: str, status: str) -> Issue:

@@ -77,6 +77,7 @@
 
 {% set ACTION_LABELS = {
   'write_doc': '编写文档',
+  'revise_doc': '修订文档',
   'generate_code': '生成代码',
   'create_pr': '创建 PR',
 } %}
@@ -93,6 +94,18 @@
 {{ badge(meta[1], meta[0], meta[2]) }}
 {%- endmacro %}
 
+{% macro approval_badge(issue) -%}
+{% if issue.doc_approved_at %}
+<span class="badge badge-sm badge-success gap-1 whitespace-nowrap" aria-label="设计文档已批准">
+  {{ icon('check-circle', 'h-3.5 w-3.5') }}<span>已批准</span>
+</span>
+{% else %}
+<span class="badge badge-sm badge-warning gap-1 whitespace-nowrap" aria-label="设计文档未批准">
+  {{ icon('clock', 'h-3.5 w-3.5') }}<span>未批准</span>
+</span>
+{% endif %}
+{%- endmacro %}
+
 {% macro list_status_badge(issue) -%}
 {% if issue.status == 'pr_opened' %}
   {% if issue.pr_state in ('open', 'merged', 'closed') %}
@@ -106,6 +119,9 @@
   {% endif %}
 {% else %}
   {{ issue_status_badge(issue.status) }}
+  {% if issue.status == 'pending_codegen' %}
+    {{ approval_badge(issue) }}
+  {% endif %}
 {% endif %}
 {%- endmacro %}
 

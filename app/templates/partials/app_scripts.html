@@ -14,14 +14,47 @@
       if (box) box.hidden = true;
     });
 
+    var dialog = document.getElementById('gw-confirm');
+    var titleEl = dialog ? document.getElementById('gw-confirm-title') : null;
+    var bodyEl = dialog ? document.getElementById('gw-confirm-body') : null;
+    var okButton = dialog ? dialog.querySelector('[data-gw-ok]') : null;
+    var cancelButton = dialog ? dialog.querySelector('[data-gw-cancel]') : null;
+    var backdrop = dialog ? dialog.querySelector('[data-gw-backdrop]') : null;
+    var trigger = null;
+    var pendingForm = null;
+    var pendingSubmitter = null;
+
+    function closeDialog() {
+      if (dialog && typeof dialog.close === 'function' && dialog.open) dialog.close();
+    }
+
+    function openConfirm(form, button) {
+      if (!dialog) return;
+      pendingForm = form;
+      pendingSubmitter = button && button.type === 'submit' ? button : null;
+      trigger = button;
+      titleEl.textContent = button.getAttribute('data-confirm-title') || '确认操作';
+      bodyEl.textContent = button.getAttribute('data-confirm-body') || '';
+      if (typeof dialog.showModal === 'function') {
+        dialog.showModal();
+        okButton.focus();
+      }
+    }
+
     document.addEventListener('submit', function (event) {
       var form = event.target;
       if (!form || form.tagName !== 'FORM') return;
+      var submitter = event.submitter || null;
       if (form.hasAttribute('data-gw-confirm-form') && form.getAttribute('data-gw-confirmed') !== '1') {
         event.preventDefault();
         return;
       }
-      var submitButton = form.querySelector('[data-gw-submit]') || form.querySelector('button');
+      if (submitter && submitter.hasAttribute('data-gw-confirm') && form.getAttribute('data-gw-confirmed') !== '1') {
+        event.preventDefault();
+        openConfirm(form, submitter);
+        return;
+      }
+      var submitButton = submitter || form.querySelector('[data-gw-submit]') || form.querySelector('button');
       form.setAttribute('aria-busy', 'true');
       if (submitButton && !submitButton.disabled) {
         submitButton.disabled = true;
@@ -44,40 +77,20 @@
           }
         }
       }
-      Array.prototype.forEach.call(form.querySelectorAll('button'), function (button) {
-        button.disabled = true;
-      });
     });
 
-    var dialog = document.getElementById('gw-confirm');
     if (!dialog) return;
-    var titleEl = document.getElementById('gw-confirm-title');
-    var bodyEl = document.getElementById('gw-confirm-body');
-    var okButton = dialog.querySelector('[data-gw-ok]');
-    var cancelButton = dialog.querySelector('[data-gw-cancel]');
-    var backdrop = dialog.querySelector('[data-gw-backdrop]');
-    var trigger = null;
-    var pendingForm = null;
-
-    function closeDialog() {
-      if (typeof dialog.close === 'function' && dialog.open) dialog.close();
-    }
 
     document.addEventListener('click', function (event) {
       var button = event.target.closest('[data-gw-confirm]');
       if (!button) return;
-      pendingForm = button.closest('form');
-      trigger = button;
-      titleEl.textContent = button.getAttribute('data-confirm-title') || '确认操作';
-      bodyEl.textContent = button.getAttribute('data-confirm-body') || '';
-      if (typeof dialog.showModal === 'function') {
-        dialog.showModal();
-        okButton.focus();
-      }
+      if (button.type === 'submit') event.preventDefault();
+      openConfirm(button.closest('form'), button);
     });
 
     okButton.addEventListener('click', function () {
       var form = pendingForm;
+      var submitter = pendingSubmitter;
       if (!form) {
         closeDialog();
         return;
@@ -85,7 +98,7 @@
       form.setAttribute('data-gw-confirmed', '1');
       closeDialog();
       if (typeof form.requestSubmit === 'function') {
-        form.requestSubmit();
+        form.requestSubmit(submitter || undefined);
       } else {
         form.submit();
       }
@@ -99,6 +112,7 @@
     dialog.addEventListener('close', function () {
       var previous = trigger;
       pendingForm = null;
+      pendingSubmitter = null;
       trigger = null;
       if (previous) previous.focus();
     });

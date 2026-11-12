@@ -8,6 +8,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.core.settings import PROJECT_ROOT, get_settings
+from app.crud import design_feedback as feedback_crud
 from app.crud import job as job_crud
 from app.models.issue import Issue
 from app.models.job import Job
@@ -42,7 +43,7 @@ from app.services.issues import (
     is_legacy_codegen_branch,
 )
 from app.services.pr_sync import apply_initial_state
-from app.services.prompts import codegen_prompt, write_doc_prompt
+from app.services.prompts import codegen_prompt, revise_doc_prompt, write_doc_prompt
 from app.services.worker_heartbeat import write_heartbeat
 
 
@@ -186,6 +187,7 @@ def run_write_doc(db: Session, job: Job) -> None:
         text = target.read_text(encoding="utf-8")
         issue.design_doc_text = text
         issue.design_source_updated_at = issue.github_updated_at
+        issue.doc_approved_at = None
         if issue.design_doc_path is None:
             issue.iteration_no = iteration_no
             issue.design_doc_path = rel
@@ -204,6 +206,148 @@ def run_write_doc(db: Session, job: Job) -> None:
                 run_git(["worktree", "remove", "--force", str(worktree)], cwd=repo.local_path)
         except GitError as exc:
             logger.warning(f"cleanup worktree failed: {exc}")
+
+
+def run_revise_doc(db: Session, job: Job) -> None:
+    settings = get_settings()
+    issue = db.get(Issue, job.issue_id)
+    repo = db.get(Repository, job.repository_id)
+    assert issue and repo and repo.local_path
+
+    if issue.github_state != "open":
+        job.status = "cancelled"
+        job.finished_at = datetime.now(timezone.utc)
+        job.error = "Issue not open"
+        db.commit()
+        return
+
+    if issue.status not in {"pending_codegen", "failed"} or (
+        issue.status == "failed"
+        and (issue.failed_action or "") not in {"", "revise_doc"}
+    ):
+        _fail_issue(db, issue, job, action="revise_doc", error="状态不允许修订文档")
+        return
+    if not issue.design_doc_path or not (issue.design_doc_text or "").strip():
+        _fail_issue(db, issue, job, action="revise_doc", error="设计文档不存在或为空")
+        return
+    if job_crud.has_other_active_for_issue(db, issue.id, exclude_job_id=job.id):
+        _fail_issue(db, issue, job, action="revise_doc", error="已有其它排队或执行中任务")
+        return
+
+    feedbacks = feedback_crud.unresolved_comments(db, issue.id)
+    if not feedbacks:
+        _fail_issue(db, issue, job, action="revise_doc", error="没有待处理意见")
+        return
+
+    agent = read_agent()
+    if not agent:
+        _fail_issue(db, issue, job, action="revise_doc", error="未选代理")
+        return
+    job.agent = agent
+    issue.status = "drafting"
+    issue.last_error = None
+    db.commit()
+
+    worktree = Path(settings.worktree_root) / "revise-doc" / str(job.id)
+    log_path = PROJECT_ROOT / "logs" / "jobs" / f"{job.id}.log"
+    job.log_path = str(log_path)
+    db.commit()
+
+    old_text = issue.design_doc_text or ""
+    rel = issue.design_doc_path
+    try:
+        run_git(["fetch", "origin"], cwd=repo.local_path)
+        worktree.parent.mkdir(parents=True, exist_ok=True)
+        if worktree.exists():
+            run_git(["worktree", "remove", "--force", str(worktree)], cwd=repo.local_path)
+        run_git(
+            ["worktree", "add", "--detach", str(worktree), f"origin/{repo.default_branch}"],
+            cwd=repo.local_path,
+        )
+
+        target = worktree / rel
+        if target.exists():
+            raise AgentError(f"设计文档路径 {rel} 已在默认分支上被跟踪，请人工处理")
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(old_text, encoding="utf-8")
+
+        foundation = read_foundation_from_worktree(worktree, doc_dir=repo.doc_dir)
+        prompt = revise_doc_prompt(
+            title=issue.title,
+            body=issue.body,
+            rel_path=rel,
+            design_doc_text=old_text,
+            feedbacks=[
+                {
+                    "author": row.author_username,
+                    "created": (
+                        row.created_at.strftime("%Y-%m-%d %H:%M UTC")
+                        if row.created_at
+                        else ""
+                    ),
+                    "body": row.body,
+                }
+                for row in feedbacks
+            ],
+            foundation=foundation,
+        )
+        code = run_agent(
+            agent,
+            prompt,
+            cwd=worktree,
+            timeout_sec=settings.doc_timeout_sec,
+            log_path=log_path,
+            on_progress=_agent_progress(db, job, issue, log_path),
+        )
+        job.log_excerpt = read_log_excerpt(log_path)
+        job.exit_code = code
+
+        new_text = target.read_text(encoding="utf-8") if target.exists() else ""
+        if not new_text.strip():
+            if code != 0:
+                raise AgentError(f"代理退出码 {code}", exit_code=code)
+            raise AgentError("设计文档缺失或为空")
+
+        porcelain = run_git(["status", "--porcelain"], cwd=worktree)
+        lines = [ln for ln in porcelain.splitlines() if ln.strip()]
+        if len(lines) != 1 or not lines[0].startswith("??"):
+            raise AgentError("修订只允许改写目标设计文档")
+        if not porcelain_untracked_covers(lines[0], rel):
+            raise AgentError("未找到预期文档路径")
+        if new_text == old_text:
+            raise AgentError("修订结果与原文相同")
+
+        if code != 0:
+            note = (
+                f"\n[github_workflow] agent exit {code} ignored: "
+                "revised doc written and validation passed\n"
+            )
+            logger.warning(
+                f"revise_doc job={job.id} agent exit {code}; accepting valid design doc"
+            )
+            with log_path.open("a", encoding="utf-8") as logf:
+                logf.write(note)
+            job.log_excerpt = read_log_excerpt(log_path)
+
+        issue.design_doc_text = new_text
+        issue.design_source_updated_at = issue.github_updated_at
+        issue.doc_approved_at = None
+        issue.status = "pending_codegen"
+        issue.failed_action = None
+        issue.last_error = None
+        feedback_crud.mark_resolved(db, feedbacks, job_id=job.id, commit=False)
+        job.status = "succeeded"
+        job.finished_at = datetime.now(timezone.utc)
+        db.commit()
+    except (AgentError, GitError, OSError) as exc:
+        job.log_excerpt = read_log_excerpt(log_path)
+        _fail_issue(db, issue, job, action="revise_doc", error=str(exc))
+    finally:
+        try:
+            if worktree.exists():
+                run_git(["worktree", "remove", "--force", str(worktree)], cwd=repo.local_path)
+        except GitError as exc:
+            logger.warning(f"cleanup revise worktree failed: {exc}")
 
 
 def run_create_pr(db: Session, job: Job) -> None:
@@ -562,6 +706,16 @@ def run_generate_code(db: Session, job: Job) -> None:
         db.commit()
         return
 
+    if not issue.doc_approved_at:
+        job.status = "cancelled"
+        job.finished_at = datetime.now(timezone.utc)
+        job.error = "设计文档未批准"
+        issue.status = "pending_codegen"
+        issue.failed_action = None
+        issue.last_error = "设计文档未批准"
+        db.commit()
+        return
+
     agent = read_agent()
     if not agent:
         _fail_issue(db, issue, job, action="generate_code", error="未选代理")
@@ -664,6 +818,8 @@ def execute_job(db: Session, job: Job) -> None:
         return
     if job.action == "write_doc":
         run_write_doc(db, job)
+    elif job.action == "revise_doc":
+        run_revise_doc(db, job)
     elif job.action == "generate_code":
         run_generate_code(db, job)
     elif job.action == "create_pr":

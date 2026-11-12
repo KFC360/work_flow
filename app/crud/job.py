@@ -22,6 +22,19 @@ def has_active_for_issue(db: Session, issue_id: int) -> bool:
     return row is not None
 
 
+def has_other_active_for_issue(
+    db: Session, issue_id: int, *, exclude_job_id: int
+) -> bool:
+    row = db.scalar(
+        select(Job.id).where(
+            Job.issue_id == issue_id,
+            Job.status.in_(["queued", "running"]),
+            Job.id != exclude_job_id,
+        )
+    )
+    return row is not None
+
+
 def has_active_for_repo(db: Session, repository_id: int) -> bool:
     row = db.scalar(
         select(Job.id).where(
@@ -38,6 +51,7 @@ def enqueue(
     issue_id: int,
     repository_id: int,
     action: str,
+    commit: bool = True,
 ) -> Job:
     job = Job(
         issue_id=issue_id,
@@ -46,8 +60,11 @@ def enqueue(
         status="queued",
     )
     db.add(job)
-    db.commit()
-    db.refresh(job)
+    if commit:
+        db.commit()
+        db.refresh(job)
+    else:
+        db.flush()
     return job
 
 

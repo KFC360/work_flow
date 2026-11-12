@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import time
+from datetime import datetime, timezone
 from typing import Annotated
 from urllib.parse import parse_qsl, quote, urlencode, urlsplit
 
@@ -14,12 +15,14 @@ from sqlalchemy.orm import Session
 from app.core.security import csrf_token_for_jti
 from app.core.templating import build_templates
 from app.crud import company as company_crud
+from app.crud import design_feedback as feedback_crud
 from app.crud import issue as issue_crud
 from app.crud import job as job_crud
 from app.crud import repository as repository_crud
 from app.database.connect import get_db
 from app.dependencies.auth import require_csrf, require_fragment_user, require_page_user
 from app.models.user import User
+from app.services import design_review
 from app.services.actions import KIND_LABELS, STATUS_LABELS, actions_for, display_status_label
 from app.services.config_agent import read_agent
 from app.services.foundation import foundation_relpath, read_foundation_from_origin
@@ -264,6 +267,78 @@ def _redirect_with_flash(url: str, flash: str, msg: str) -> RedirectResponse:
     )
 
 
+def _design_issue_or_404(request: Request, db: Session, issue_id: int, user: User):
+    issue = issue_crud.get(db, issue_id)
+    if issue is None or issue.deleted_at is not None:
+        return None, templates.TemplateResponse(
+            request, "404.html", _ctx(user, message="未找到 Issue"), status_code=404
+        )
+    return issue, None
+
+
+def _design_block_reason(db: Session, issue) -> str | None:
+    if issue.kind != "feature":
+        return "只有功能迭代可以审阅设计文档"
+    if issue.github_state != "open":
+        return "Issue 已关闭，不能审阅设计文档"
+    if issue.status != "pending_codegen":
+        return "当前状态不允许审阅设计文档"
+    if job_crud.has_active_for_issue(db, issue.id):
+        return "有进行中的编写 / 修订任务，完成后可再审阅"
+    if not (issue.design_doc_text or "").strip():
+        return "设计文档不存在或为空"
+    return None
+
+
+def _design_redirect(issue_id: int, flash: str, msg: str) -> RedirectResponse:
+    return _redirect_with_flash(f"/issues/{issue_id}", flash, msg)
+
+
+def _design_review_context(db: Session, issue, repo) -> dict:
+    text = issue.design_doc_text or ""
+    doc_hash = design_review.doc_sha256(text)
+    parse = design_review.parse_pending_items(text)
+    decisions = feedback_crud.latest_decisions(db, issue.id, doc_hash)
+    items = design_review.pending_items_view(parse, decisions)
+    remaining = design_review.pending_remaining(parse, decisions)
+    has_active = job_crud.has_active_for_issue(db, issue.id)
+    review_visible = bool(
+        text.strip() and issue.status == "pending_codegen" and issue.deleted_at is None
+    )
+    can_edit = bool(
+        review_visible
+        and not has_active
+        and issue.kind == "feature"
+        and issue.github_state == "open"
+    )
+    return {
+        "review_visible": review_visible,
+        "review_has_active": has_active,
+        "review_can_edit": can_edit,
+        "review_can_approve": bool(can_edit and not issue.doc_approved_at),
+        "review_path_available": bool(repo.local_path),
+        "review_agent_available": bool(read_agent()),
+        "doc_sha256": doc_hash,
+        "pending_parse": parse,
+        "pending_items": items,
+        "pending_remaining": remaining,
+        "pending_all_done": bool(
+            parse.structured and parse.items and remaining == 0
+        ),
+        "pending_needs_read_confirmation": parse.needs_read_confirmation,
+        "pending_reason_label": parse.reason_label,
+        "feedback_views": design_review.feedback_views(db, issue),
+    }
+
+
+def _stale_design_doc(issue) -> bool:
+    return bool(
+        issue.design_source_updated_at
+        and issue.github_updated_at
+        and issue.github_updated_at > issue.design_source_updated_at
+    )
+
+
 @router.post("/repos/{repo_id}/issues/sync")
 def sync_repo_issues(
     repo_id: int,
@@ -349,6 +424,7 @@ def issue_detail(
         and issue.design_doc_text
         and issue.design_doc_text.strip()
     )
+    review_context = _design_review_context(db, issue, repo)
     return templates.TemplateResponse(
         request,
         "issue_detail.html",
@@ -385,6 +461,7 @@ def issue_detail(
                 (repo.github_full_name, f"/repos/{repo.id}"),
                 (f"#{issue.number} {issue.title}", None),
             ],
+            **review_context,
         ),
     )
 
@@ -510,9 +587,9 @@ def enqueue_job(
         return fail("状态不允许入队")
     if job_crud.has_active_for_issue(db, issue.id):
         return fail("已有排队或执行中任务")
-    if action in {"write_doc", "generate_code"} and not repo.local_path:
+    if action in {"write_doc", "generate_code", "revise_doc"} and not repo.local_path:
         return fail("路径未填")
-    if action in {"write_doc", "generate_code"} and not read_agent():
+    if action in {"write_doc", "generate_code", "revise_doc"} and not read_agent():
         return fail("未选代理")
     if action == "write_doc" and issue.status not in {"recorded", "pending_codegen", "failed"}:
         return fail("状态不允许编写文档")
@@ -520,10 +597,349 @@ def enqueue_job(
         return fail("代码阶段已开始，不能重写文档")
     if action == "generate_code" and issue.status not in {"pending_codegen", "failed"}:
         return fail("状态不允许生成代码")
+    if action == "generate_code" and not issue.doc_approved_at:
+        return fail("请先批准设计文档")
+    if action == "revise_doc":
+        if issue.status != "failed" or issue.failed_action != "revise_doc":
+            return fail("状态不允许重试修订")
+        if not feedback_crud.unresolved_comments(db, issue.id):
+            return fail("没有待处理意见")
     if action == "create_pr" and issue.status not in {"generated", "failed"}:
         return fail("状态不允许创建 PR")
-    if action not in {"write_doc", "generate_code", "create_pr"}:
+    if action not in {"write_doc", "generate_code", "revise_doc", "create_pr"}:
         return fail("未知动作")
 
     job_crud.enqueue(db, issue_id=issue.id, repository_id=repo.id, action=action)
     return RedirectResponse(f"/issues/{issue_id}?flash=ok&msg={quote('已入队')}", status_code=303)
+
+
+@router.post("/issues/{issue_id}/design/approve")
+def approve_design(
+    issue_id: int,
+    request: Request,
+    db: Annotated[Session, Depends(get_db)],
+    user: Annotated[User, Depends(require_csrf)],
+    doc_sha256: Annotated[str, Form()] = "",
+    read_confirmed: Annotated[str, Form()] = "",
+):
+    issue, error = _design_issue_or_404(request, db, issue_id, user)
+    if error is not None:
+        return error
+    block = _design_block_reason(db, issue)
+    if block:
+        return _design_redirect(issue_id, "error", block)
+    current_hash = design_review.doc_sha256(issue.design_doc_text)
+    if doc_sha256 != current_hash:
+        return _design_redirect(issue_id, "error", "文档已更新，请刷新后重试")
+    if issue.doc_approved_at is not None:
+        return _design_redirect(issue_id, "ok", "当前文档已批准")
+
+    check = design_review.check_pending_approval(
+        db,
+        issue,
+        doc_hash=current_hash,
+        read_confirmed=read_confirmed == "1",
+    )
+    if not check.allowed:
+        return _design_redirect(issue_id, "error", check.message)
+
+    issue.doc_approved_at = datetime.now(timezone.utc)
+    feedback_crud.create(
+        db,
+        issue_id=issue.id,
+        author_user_id=user.id,
+        author_username=user.username,
+        kind=feedback_crud.APPROVE,
+        body="已通读待确认" if check.parse.needs_read_confirmation else "",
+        doc_sha256=current_hash,
+        commit=False,
+    )
+    db.commit()
+    return _design_redirect(issue_id, "ok", "已批准设计文档")
+
+
+@router.post("/issues/{issue_id}/design/unapprove")
+def unapprove_design(
+    issue_id: int,
+    request: Request,
+    db: Annotated[Session, Depends(get_db)],
+    user: Annotated[User, Depends(require_csrf)],
+):
+    issue, error = _design_issue_or_404(request, db, issue_id, user)
+    if error is not None:
+        return error
+    block = _design_block_reason(db, issue)
+    if block:
+        return _design_redirect(issue_id, "error", block)
+    if issue.doc_approved_at is None:
+        return _design_redirect(issue_id, "ok", "当前文档未批准")
+
+    current_hash = design_review.doc_sha256(issue.design_doc_text)
+    issue.doc_approved_at = None
+    feedback_crud.create(
+        db,
+        issue_id=issue.id,
+        author_user_id=user.id,
+        author_username=user.username,
+        kind=feedback_crud.UNAPPROVE,
+        doc_sha256=current_hash,
+        commit=False,
+    )
+    db.commit()
+    return _design_redirect(issue_id, "ok", "已取消批准")
+
+
+@router.post("/issues/{issue_id}/design/feedback")
+def design_feedback(
+    issue_id: int,
+    request: Request,
+    db: Annotated[Session, Depends(get_db)],
+    user: Annotated[User, Depends(require_csrf)],
+    body: Annotated[str, Form()] = "",
+    intent: Annotated[str, Form()] = "comment",
+    doc_sha256: Annotated[str, Form()] = "",
+):
+    issue, error = _design_issue_or_404(request, db, issue_id, user)
+    if error is not None:
+        return error
+    block = _design_block_reason(db, issue)
+    if block:
+        return _design_redirect(issue_id, "error", block)
+    text = (body or "").strip()
+    if not text:
+        return _design_redirect(issue_id, "error", "请填写审阅意见")
+    current_hash = design_review.doc_sha256(issue.design_doc_text)
+    if doc_sha256 != current_hash:
+        return _design_redirect(issue_id, "error", "文档已更新，请刷新后重试")
+    if intent not in {"comment", "revise"}:
+        return _design_redirect(issue_id, "error", "未知操作")
+
+    if intent == "comment":
+        feedback_crud.create(
+            db,
+            issue_id=issue.id,
+            author_user_id=user.id,
+            author_username=user.username,
+            kind=feedback_crud.HUMAN_COMMENT,
+            body=text,
+            doc_sha256=current_hash,
+        )
+        return _design_redirect(issue_id, "ok", "意见已保存")
+
+    repo = repository_crud.get(db, issue.repository_id)
+    if repo is None or not repo.local_path:
+        return _design_redirect(issue_id, "error", "路径未填")
+    if not read_agent():
+        return _design_redirect(issue_id, "error", "未选代理")
+
+    try:
+        feedback = feedback_crud.create(
+            db,
+            issue_id=issue.id,
+            author_user_id=user.id,
+            author_username=user.username,
+            kind=feedback_crud.REVISE_REQUEST,
+            body=text,
+            doc_sha256=current_hash,
+            commit=False,
+        )
+        job = job_crud.enqueue(
+            db,
+            issue_id=issue.id,
+            repository_id=repo.id,
+            action="revise_doc",
+            commit=False,
+        )
+        feedback.job_id = job.id
+        db.commit()
+    except SQLAlchemyError:
+        db.rollback()
+        return _design_redirect(issue_id, "error", "入队失败，请稍后重试")
+    return _design_redirect(issue_id, "ok", "已入队修订")
+
+
+def _apply_pending_decision(
+    *,
+    decision: str,
+    issue_id: int,
+    request: Request,
+    db: Session,
+    user: User,
+    doc_sha256: str,
+    item_key: str,
+    body: str,
+) -> RedirectResponse:
+    issue, error = _design_issue_or_404(request, db, issue_id, user)
+    if error is not None:
+        return error
+    block = _design_block_reason(db, issue)
+    if block:
+        return _design_redirect(issue_id, "error", block)
+    current_hash = design_review.doc_sha256(issue.design_doc_text)
+    if doc_sha256 != current_hash:
+        return _design_redirect(issue_id, "error", "文档已更新，请刷新后重试")
+    parse = design_review.parse_pending_items(issue.design_doc_text)
+    if not parse.structured or not parse.items:
+        return _design_redirect(issue_id, "error", "当前文档没有可处理的待确认项")
+    item = next((entry for entry in parse.items if entry.key == item_key), None)
+    if item is None:
+        return _design_redirect(issue_id, "error", "待确认项已变化，请刷新后重试")
+    text = (body or "").strip()
+    if decision == "reject" and not text:
+        return _design_redirect(issue_id, "error", "驳回需要填写理由")
+
+    kind = feedback_crud.PENDING_CONFIRM if decision == "confirm" else feedback_crud.PENDING_REJECT
+    latest = feedback_crud.latest_decisions(db, issue.id, current_hash).get(item.key)
+    if latest is not None and latest.kind == kind:
+        return _design_redirect(issue_id, "ok", "已是该状态")
+    feedback_crud.create(
+        db,
+        issue_id=issue.id,
+        author_user_id=user.id,
+        author_username=user.username,
+        kind=kind,
+        body=text,
+        pending_item_key=item.key,
+        pending_item_title=item.title,
+        doc_sha256=current_hash,
+    )
+    message = "已确认" if decision == "confirm" else "已驳回"
+    return _design_redirect(issue_id, "ok", message)
+
+
+@router.post("/issues/{issue_id}/design/pending/confirm")
+def confirm_pending_item(
+    issue_id: int,
+    request: Request,
+    db: Annotated[Session, Depends(get_db)],
+    user: Annotated[User, Depends(require_csrf)],
+    doc_sha256: Annotated[str, Form()] = "",
+    item_key: Annotated[str, Form()] = "",
+    body: Annotated[str, Form()] = "",
+):
+    return _apply_pending_decision(
+        decision="confirm",
+        issue_id=issue_id,
+        request=request,
+        db=db,
+        user=user,
+        doc_sha256=doc_sha256,
+        item_key=item_key,
+        body=body,
+    )
+
+
+@router.post("/issues/{issue_id}/design/pending/reject")
+def reject_pending_item(
+    issue_id: int,
+    request: Request,
+    db: Annotated[Session, Depends(get_db)],
+    user: Annotated[User, Depends(require_csrf)],
+    doc_sha256: Annotated[str, Form()] = "",
+    item_key: Annotated[str, Form()] = "",
+    body: Annotated[str, Form()] = "",
+):
+    return _apply_pending_decision(
+        decision="reject",
+        issue_id=issue_id,
+        request=request,
+        db=db,
+        user=user,
+        doc_sha256=doc_sha256,
+        item_key=item_key,
+        body=body,
+    )
+
+
+@router.get("/issues/{issue_id}/design/edit", response_class=HTMLResponse)
+def design_edit(
+    issue_id: int,
+    request: Request,
+    db: Annotated[Session, Depends(get_db)],
+    user: Annotated[User, Depends(require_page_user)],
+):
+    issue, error = _design_issue_or_404(request, db, issue_id, user)
+    if error is not None:
+        return error
+    block = _design_block_reason(db, issue)
+    if block:
+        return _design_redirect(issue_id, "error", block)
+    repo = repository_crud.get(db, issue.repository_id)
+    assert repo is not None
+    company = company_crud.get(db, repo.company_id)
+    return templates.TemplateResponse(
+        request,
+        "design_edit.html",
+        _ctx(
+            user,
+            issue=issue,
+            repo=repo,
+            company=company,
+            doc_text=issue.design_doc_text or "",
+            field_error=None,
+            stale_doc=_stale_design_doc(issue),
+            breadcrumbs=[
+                ("公司", "/"),
+                (company.name if company else "公司", f"/companies/{repo.company_id}"),
+                (repo.github_full_name, f"/repos/{repo.id}"),
+                (f"#{issue.number} {issue.title}", f"/issues/{issue.id}"),
+                ("编辑设计文档", None),
+            ],
+        ),
+    )
+
+
+@router.post("/issues/{issue_id}/design/edit", response_class=HTMLResponse)
+def save_design_edit(
+    issue_id: int,
+    request: Request,
+    db: Annotated[Session, Depends(get_db)],
+    user: Annotated[User, Depends(require_csrf)],
+    design_doc_text: Annotated[str, Form()] = "",
+):
+    issue, error = _design_issue_or_404(request, db, issue_id, user)
+    if error is not None:
+        return error
+    block = _design_block_reason(db, issue)
+    if block:
+        return _design_redirect(issue_id, "error", block)
+    repo = repository_crud.get(db, issue.repository_id)
+    assert repo is not None
+    company = company_crud.get(db, repo.company_id)
+    if not (design_doc_text or "").strip():
+        return templates.TemplateResponse(
+            request,
+            "design_edit.html",
+            _ctx(
+                user,
+                issue=issue,
+                repo=repo,
+                company=company,
+                doc_text=design_doc_text,
+                field_error="设计文档不能为空",
+                stale_doc=_stale_design_doc(issue),
+                breadcrumbs=[
+                    ("公司", "/"),
+                    (company.name if company else "公司", f"/companies/{repo.company_id}"),
+                    (repo.github_full_name, f"/repos/{repo.id}"),
+                    (f"#{issue.number} {issue.title}", f"/issues/{issue.id}"),
+                    ("编辑设计文档", None),
+                ],
+            ),
+            status_code=200,
+        )
+
+    issue.design_doc_text = design_doc_text
+    issue.doc_approved_at = None
+    feedback_crud.create(
+        db,
+        issue_id=issue.id,
+        author_user_id=user.id,
+        author_username=user.username,
+        kind=feedback_crud.HUMAN_EDIT,
+        body=f"人工编辑保存（{len(design_doc_text)} 字符）",
+        doc_sha256=design_review.doc_sha256(design_doc_text),
+        commit=False,
+    )
+    db.commit()
+    return _design_redirect(issue_id, "ok", "已保存，需重新批准")

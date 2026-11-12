@@ -475,15 +475,27 @@ GitHub 字段由 API 覆盖。`local_path`、`doc_dir` 只由仓库页面写入�
 
 ### 全站配置 `config.yaml`
 
-不建 `setting` 表。全站只有代理这一个选项，Web 和 Worker 都读项目根目录的 `config.yaml`：
+不建 `setting` 表。全站代理与邮件发件参数放项目根目录的 `config.yaml`，Web 和 Worker 都读同一份文件：
 
 ```yaml
 agent: claude
+
+mail:
+  enabled: false
+  smtp_host: smtp.example.com
+  smtp_port: 587
+  security: starttls      # ssl | starttls | none
+  username: ""
+  from_address: notify@example.com
+  from_name: GitHub 工作流
+  default_to: ""
 ```
 
-`agent` 只能是 `opencode` 或 `claude`。缺省、空字符串或文件不存在都视为还没选择。密钥、数据库地址和 JWT 不写进这个文件。
+`agent` 只能是 `opencode` 或 `claude`。缺省、空字符串或文件不存在都视为还没选择。`mail` 只保存非密钥参数；`smtp_port` 为 1–65535，`security` 只接受 `ssl` / `starttls` / `none`。密钥、数据库地址和 JWT 不写进这个文件。
 
-设置页是唯一写入处。先写临时文件，再替换原文件，避免 Worker 读到写了一半的内容。仓库里提交 `config.yaml.example`，真实的 `config.yaml` 不进 git。
+SMTP 密码只从环境变量 `SMTP_PASSWORD` 读取，不写入 yaml、数据库、页面或日志。设置页只显示「已配置 / 未配置」，不提供密码输入框；修改 `.env` 后需重启 Web / Worker。公共发件入口为 `app/services/mail.py` 的 `send_mail()`，发送前对 HTML 做白名单消毒。
+
+设置页是唯一写入处。一次保存同时写回 `agent` 与 `mail` 的八个非密钥键，保留未知顶层键；先写临时文件，再替换原文件，避免 Worker 读到写了一半的内容。仓库里提交 `config.yaml.example`，真实的 `config.yaml` 不进 git。
 
 ### job
 
@@ -783,9 +795,14 @@ failed 投递可以在页面点「重试投递」改回 queued。系统不依赖
 
 ### 设置 `/settings`
 
-面包屑可省略或仅「设置」。只有一个字段：代理，单选 `opencode` 或 `claude`。页上写明当前选择会用于之后所有仓库的编写文档和生成代码；未配置时 `alert-warning`「尚未选择代理」。保存时写回 `config.yaml`，303 回本页并 flash「已保存」。
+面包屑可省略或仅「设置」。同一张表单保存两组配置：
 
-密钥不在界面上回显，也不在这页编辑，避免做成第二份秘密存储。顶栏各页都能进到设置。
+- 全站代理：单选 `opencode` 或 `claude`。页上写明会用于之后所有仓库的编写文档和生成代码；未配置时 `alert-warning`「尚未选择代理」。
+- 邮件发件：启用开关、SMTP 主机、端口、加密方式、用户名、发件人地址、发件人显示名、默认收件人。启用但缺主机 / 端口 / 发件人时页顶列出缺失项；`security=none` 显示明文传输告警。
+
+一次 POST `/settings` 同时写回 `agent` 与 `mail` 非密钥字段，校验失败返回 200 并保留已填值，成功后 303 回本页并 flash「已保存」。SMTP 密码只从环境变量 `SMTP_PASSWORD` 读取，页面仅显示「已配置 / 未配置」，不提供输入框或明文回显；修改 `.env` 后需重启 Web / Worker。密钥不在界面上回显，也不在这页编辑，避免做成第二份秘密存储。
+
+独立表单 `POST /settings/mail/test` 发送测试邮件，字段 `to` 可选；留空时使用已保存的 `mail.default_to`。试发只读已保存配置，不读表单未保存值；成功 / 失败均 flash，失败只展示短原因，不展示 SMTP 原始异常或凭据。顶栏各页都能进到设置。
 
 ## 编写文档
 

@@ -4,6 +4,8 @@ import subprocess
 from datetime import datetime, timezone
 from pathlib import Path
 
+import pytest
+import yaml
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
@@ -12,6 +14,11 @@ from app.crud import company as company_crud
 from app.crud import issue as issue_crud
 from app.crud import repository as repository_crud
 from app.crud import user as user_crud
+from app.services.app_config import (
+    MailConfig,
+    read_app_config,
+    write_app_config,
+)
 from app.services.config_agent import write_agent
 from app.services.git_repo import inspect_origin, parse_origin_full_name
 from app.services.github_api import GitHubAPIError
@@ -78,11 +85,116 @@ def test_settings_write_agent(client: TestClient, db: Session, tmp_path: Path, m
     settings = get_settings()
     object.__setattr__(settings, "config_yaml_path", cfg) if False else None
     # frozen dataclass — patch via monkeypatch on get_settings return
-    monkeypatch.setattr("app.services.config_agent.get_settings", lambda: type("S", (), {"config_yaml_path": cfg})())
+    monkeypatch.setattr("app.services.app_config.get_settings", lambda: type("S", (), {"config_yaml_path": cfg})())
     csrf = _login(client, db)
     resp = client.post("/settings", data={"csrf_token": csrf, "agent": "claude"}, follow_redirects=False)
     assert resp.status_code == 303
-    assert "agent: claude" in cfg.read_text(encoding="utf-8")
+    text = cfg.read_text(encoding="utf-8")
+    assert "agent: claude" in text
+    assert "mail:" in text
+
+
+def _patch_config_path(monkeypatch, cfg: Path) -> None:
+    monkeypatch.setattr(
+        "app.services.app_config.get_settings",
+        lambda: type("S", (), {"config_yaml_path": cfg})(),
+    )
+
+
+def _mail(**overrides: object) -> MailConfig:
+    values: dict[str, object] = {
+        "enabled": True,
+        "smtp_host": "smtp.example.com",
+        "smtp_port": 587,
+        "security": "starttls",
+        "username": "notify",
+        "from_address": "notify@example.com",
+        "from_name": "GitHub 工作流",
+        "default_to": "ops@example.com",
+    }
+    values.update(overrides)
+    return MailConfig(**values)
+
+
+def test_app_config_missing_file_defaults(tmp_path: Path, monkeypatch) -> None:
+    cfg = tmp_path / "config.yaml"
+    _patch_config_path(monkeypatch, cfg)
+
+    config = read_app_config()
+    assert config.agent is None
+    assert config.mail.enabled is False
+    assert config.mail.smtp_port == 0
+    assert config.mail.security == ""
+    assert config.warning is None
+
+
+def test_app_config_write_atomic_and_preserves_unknown_keys(tmp_path: Path, monkeypatch) -> None:
+    cfg = tmp_path / "config.yaml"
+    cfg.write_text("agent: opencode\nunknown_key: keep-me\n", encoding="utf-8")
+    _patch_config_path(monkeypatch, cfg)
+
+    write_app_config("claude", _mail())
+
+    data = yaml.safe_load(cfg.read_text(encoding="utf-8"))
+    assert data["agent"] == "claude"
+    assert data["unknown_key"] == "keep-me"
+    assert data["mail"] == {
+        "enabled": True,
+        "smtp_host": "smtp.example.com",
+        "smtp_port": 587,
+        "security": "starttls",
+        "username": "notify",
+        "from_address": "notify@example.com",
+        "from_name": "GitHub 工作流",
+        "default_to": "ops@example.com",
+    }
+    assert "password" not in cfg.read_text(encoding="utf-8").lower()
+    assert not (tmp_path / "config.yaml.tmp").exists()
+
+
+def test_app_config_write_failure_cleans_tmp(tmp_path: Path, monkeypatch) -> None:
+    cfg = tmp_path / "config.yaml"
+    _patch_config_path(monkeypatch, cfg)
+
+    def fail_replace(*_args, **_kwargs):
+        raise OSError("disk full")
+
+    monkeypatch.setattr("app.services.app_config.os.replace", fail_replace)
+    with pytest.raises(OSError):
+        write_app_config("claude", _mail())
+    assert not (tmp_path / "config.yaml.tmp").exists()
+
+
+def test_app_config_bad_values_are_not_silently_coerced(tmp_path: Path, monkeypatch) -> None:
+    cfg = tmp_path / "config.yaml"
+    cfg.write_text(
+        "agent: nope\nmail:\n  enabled: 'yes'\n  smtp_port: abc\n  security: tls\n",
+        encoding="utf-8",
+    )
+    _patch_config_path(monkeypatch, cfg)
+
+    config = read_app_config()
+    assert config.agent is None
+    assert config.mail.enabled is False
+    assert config.mail.smtp_port == 0
+    assert config.mail.security == ""
+
+
+def test_app_config_malformed_yaml_reports_warning(tmp_path: Path, monkeypatch) -> None:
+    cfg = tmp_path / "config.yaml"
+    cfg.write_text("agent: [\n", encoding="utf-8")
+    _patch_config_path(monkeypatch, cfg)
+
+    config = read_app_config()
+    assert config.agent is None
+    assert config.mail.enabled is False
+    assert config.warning
+
+    write_app_config("claude", _mail())
+    rebuilt = read_app_config()
+    assert rebuilt.agent == "claude"
+    assert rebuilt.mail.smtp_host == "smtp.example.com"
+
 
 
 def _seed_repo(db: Session, *, gh_id: int = 10, full_name: str = "acme/demo", **overrides):

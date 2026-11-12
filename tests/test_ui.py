@@ -4,7 +4,9 @@ import re
 from datetime import datetime, timezone
 from html.parser import HTMLParser
 from pathlib import Path
+from urllib.parse import unquote
 
+import yaml
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
@@ -15,6 +17,8 @@ from app.crud import job as job_crud
 from app.crud import repository as repository_crud
 from app.crud import user as user_crud
 from app.crud import webhook_delivery as delivery_crud
+from app.services.app_config import MailConfig, write_app_config
+from app.services.mail import MailConfigError
 
 
 def _login(client: TestClient, db: Session) -> str:
@@ -740,3 +744,251 @@ def test_forms_use_daisyui5(client: TestClient, db: Session) -> None:
     assert 'class="fieldset' in resp.text
     assert 'class="card card-border' in resp.text
     assert "radio radio-primary" in resp.text
+
+
+def _patch_settings_config(monkeypatch, cfg: Path) -> None:
+    monkeypatch.setattr(
+        "app.services.app_config.get_settings",
+        lambda: type("S", (), {"config_yaml_path": cfg})(),
+    )
+
+
+def _mail_config(**overrides: object) -> MailConfig:
+    values: dict[str, object] = {
+        "enabled": True,
+        "smtp_host": "smtp.example.com",
+        "smtp_port": 587,
+        "security": "starttls",
+        "username": "notify",
+        "from_address": "notify@example.com",
+        "from_name": "GitHub 工作流",
+        "default_to": "ops@example.com",
+    }
+    values.update(overrides)
+    return MailConfig(**values)
+
+
+def test_settings_shows_mail_fields_and_password_state(
+    client: TestClient, db: Session, tmp_path: Path, monkeypatch
+) -> None:
+    cfg = tmp_path / "config.yaml"
+    cfg.write_text("agent: claude\n", encoding="utf-8")
+    _patch_settings_config(monkeypatch, cfg)
+    monkeypatch.delenv("SMTP_PASSWORD", raising=False)
+    _login(client, db)
+
+    resp = client.get("/settings")
+    assert resp.status_code == 200
+    assert "邮件发件" in resp.text
+    assert 'name="mail_enabled"' in resp.text
+    assert 'name="mail_smtp_host"' in resp.text
+    assert 'name="mail_smtp_port"' in resp.text
+    assert 'name="mail_security"' in resp.text
+    assert 'name="mail_from_address"' in resp.text
+    assert 'name="mail_default_to"' in resp.text
+    assert 'value="587"' in resp.text
+    assert "STARTTLS" in resp.text
+    assert "SMTP_PASSWORD" in resp.text
+    assert "未配置" in resp.text
+    assert 'type="password"' not in resp.text
+    assert "发送测试邮件" in resp.text
+
+
+def test_settings_password_configured_badge_hides_value(
+    client: TestClient, db: Session, tmp_path: Path, monkeypatch
+) -> None:
+    cfg = tmp_path / "config.yaml"
+    cfg.write_text("agent: claude\n", encoding="utf-8")
+    _patch_settings_config(monkeypatch, cfg)
+    monkeypatch.setenv("SMTP_PASSWORD", "top-secret-value")
+    _login(client, db)
+
+    resp = client.get("/settings")
+    assert resp.status_code == 200
+    assert "已配置" in resp.text
+    assert "top-secret-value" not in resp.text
+    assert 'type="password"' not in resp.text
+
+
+def test_settings_saves_agent_and_mail_in_one_post(
+    client: TestClient, db: Session, tmp_path: Path, monkeypatch
+) -> None:
+    cfg = tmp_path / "config.yaml"
+    _patch_settings_config(monkeypatch, cfg)
+    csrf = _login(client, db)
+
+    resp = client.post(
+        "/settings",
+        data={
+            "csrf_token": csrf,
+            "agent": "claude",
+            "mail_enabled": "on",
+            "mail_smtp_host": "smtp.example.com",
+            "mail_smtp_port": "465",
+            "mail_security": "ssl",
+            "mail_username": "notify",
+            "mail_from_address": "notify@example.com",
+            "mail_from_name": "GitHub 工作流",
+            "mail_default_to": "ops@example.com",
+        },
+        follow_redirects=False,
+    )
+    assert resp.status_code == 303
+    location = unquote(resp.headers["location"])
+    assert "flash=ok" in location
+    assert "已保存" in location
+
+    data = yaml.safe_load(cfg.read_text(encoding="utf-8"))
+    assert data["agent"] == "claude"
+    assert data["mail"] == {
+        "enabled": True,
+        "smtp_host": "smtp.example.com",
+        "smtp_port": 465,
+        "security": "ssl",
+        "username": "notify",
+        "from_address": "notify@example.com",
+        "from_name": "GitHub 工作流",
+        "default_to": "ops@example.com",
+    }
+    assert "SMTP_PASSWORD" not in cfg.read_text(encoding="utf-8")
+
+
+def test_settings_enabled_mail_missing_required_fields_keeps_file(
+    client: TestClient, db: Session, tmp_path: Path, monkeypatch
+) -> None:
+    cfg = tmp_path / "config.yaml"
+    cfg.write_text("agent: opencode\n", encoding="utf-8")
+    before = cfg.read_text(encoding="utf-8")
+    _patch_settings_config(monkeypatch, cfg)
+    csrf = _login(client, db)
+
+    resp = client.post(
+        "/settings",
+        data={
+            "csrf_token": csrf,
+            "agent": "opencode",
+            "mail_enabled": "on",
+            "mail_smtp_host": "",
+            "mail_smtp_port": "",
+            "mail_security": "starttls",
+            "mail_from_address": "",
+        },
+    )
+    assert resp.status_code == 200
+    assert "SMTP 主机不能为空" in resp.text
+    assert "SMTP 端口不能为空" in resp.text
+    assert "发件人地址不能为空" in resp.text
+    assert cfg.read_text(encoding="utf-8") == before
+
+
+def test_settings_test_mail_uses_saved_config_only(
+    client: TestClient, db: Session, tmp_path: Path, monkeypatch
+) -> None:
+    cfg = tmp_path / "config.yaml"
+    _patch_settings_config(monkeypatch, cfg)
+    write_app_config("claude", _mail_config())
+    csrf = _login(client, db)
+
+    calls: list[tuple] = []
+
+    def fake_send_mail(to, subject, html_body, *, text_fallback=None):
+        calls.append((to, subject, html_body, text_fallback))
+
+    monkeypatch.setattr("app.api.v1.settings.send_mail", fake_send_mail)
+
+    resp = client.post(
+        "/settings/mail/test",
+        data={
+            "csrf_token": csrf,
+            "to": "",
+            "mail_smtp_host": "unsaved.example.com",
+        },
+        follow_redirects=False,
+    )
+    assert resp.status_code == 303
+    location = unquote(resp.headers["location"])
+    assert "flash=ok" in location
+    assert "测试邮件已发送" in location
+    assert len(calls) == 1
+    assert calls[0][0] == "ops@example.com"
+    assert calls[0][1] == "GitHub 工作流测试邮件"
+    assert "SMTP 配置可用" in calls[0][2]
+
+
+def test_settings_test_mail_failure_flash(
+    client: TestClient, db: Session, tmp_path: Path, monkeypatch
+) -> None:
+    cfg = tmp_path / "config.yaml"
+    _patch_settings_config(monkeypatch, cfg)
+    write_app_config("claude", _mail_config(enabled=False))
+    csrf = _login(client, db)
+
+    def fail_send_mail(*_args, **_kwargs):
+        raise MailConfigError("disabled", "邮件发件未启用")
+
+    monkeypatch.setattr("app.api.v1.settings.send_mail", fail_send_mail)
+
+    resp = client.post(
+        "/settings/mail/test",
+        data={"csrf_token": csrf, "to": "ops@example.com"},
+        follow_redirects=False,
+    )
+    assert resp.status_code == 303
+    location = unquote(resp.headers["location"])
+    assert "flash=error" in location
+    assert "发送失败" in location
+    assert "邮件发件未启用" in location
+
+
+def test_settings_test_mail_requires_recipient(
+    client: TestClient, db: Session, tmp_path: Path, monkeypatch
+) -> None:
+    cfg = tmp_path / "config.yaml"
+    _patch_settings_config(monkeypatch, cfg)
+    write_app_config("claude", _mail_config(default_to=""))
+    csrf = _login(client, db)
+
+    resp = client.post(
+        "/settings/mail/test",
+        data={"csrf_token": csrf, "to": ""},
+        follow_redirects=False,
+    )
+    assert resp.status_code == 303
+    location = unquote(resp.headers["location"])
+    assert "flash=error" in location
+    assert "请填写收件地址或配置默认收件人" in location
+
+
+def test_settings_test_mail_rejects_missing_csrf(
+    client: TestClient, db: Session, tmp_path: Path, monkeypatch
+) -> None:
+    cfg = tmp_path / "config.yaml"
+    _patch_settings_config(monkeypatch, cfg)
+    _login(client, db)
+
+    resp = client.post(
+        "/settings/mail/test",
+        data={"to": "ops@example.com"},
+        follow_redirects=False,
+    )
+    assert resp.status_code == 403
+
+
+def test_settings_enabled_mail_missing_fields_warns(
+    client: TestClient, db: Session, tmp_path: Path, monkeypatch
+) -> None:
+    cfg = tmp_path / "config.yaml"
+    cfg.write_text(
+        "agent: claude\nmail:\n  enabled: true\n  smtp_host: ''\n  smtp_port: 0\n"
+        "  security: starttls\n  from_address: ''\n",
+        encoding="utf-8",
+    )
+    _patch_settings_config(monkeypatch, cfg)
+    monkeypatch.delenv("SMTP_PASSWORD", raising=False)
+    _login(client, db)
+
+    resp = client.get("/settings")
+    assert resp.status_code == 200
+    assert "邮件配置不完整，试发不可用" in resp.text
+    assert "SMTP 主机不能为空" in resp.text
+    assert "SMTP 密码未配置，保存后仍无法发信" in resp.text

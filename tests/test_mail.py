@@ -114,7 +114,7 @@ def test_ssl_uses_smtp_ssl(monkeypatch) -> None:
     smtp = FakeSMTP.instances[-1]
     assert (smtp.host, smtp.port) == ("smtp.example.com", 465)
     assert smtp.context is not None
-    assert [call[0] for call in smtp.calls] == ["send_message"]
+    assert [call[0] for call in smtp.calls] == ["ehlo", "send_message"]
 
 
 def test_none_security_skips_starttls_and_login(monkeypatch) -> None:
@@ -206,6 +206,29 @@ def test_smtp_exception_is_wrapped_without_password(monkeypatch) -> None:
 
     assert exc_info.value.code == "smtp_error"
     assert "SMTPAuthenticationError" in str(exc_info.value)
+    assert "smtp.example.com:587/starttls" in str(exc_info.value)
+    assert "smtp-secret" not in str(exc_info.value)
+
+
+def test_smtp_disconnected_includes_port_hint(monkeypatch) -> None:
+    _patch(
+        monkeypatch,
+        _mail(security="starttls", smtp_port=465, username="u"),
+        password="smtp-secret",
+    )
+
+    class DroppingSMTP(FakeSMTP):
+        def ehlo(self):
+            raise smtplib.SMTPServerDisconnected("Connection unexpectedly closed")
+
+    monkeypatch.setattr("app.services.mail.smtplib.SMTP", DroppingSMTP)
+
+    with pytest.raises(MailSendError) as exc_info:
+        send_mail("a@example.com", "Subject", "<p>Hello</p>")
+
+    assert exc_info.value.code == "smtp_error"
+    assert "SMTPServerDisconnected" in str(exc_info.value)
+    assert "465→SSL" in str(exc_info.value)
     assert "smtp-secret" not in str(exc_info.value)
 
 

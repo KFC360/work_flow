@@ -207,6 +207,15 @@ def send_mail(
         from_name=config.from_name,
     )
 
+    endpoint = f"{config.smtp_host}:{config.smtp_port}/{config.security}"
+    if config.smtp_port == 465 and config.security != "ssl":
+        logger.warning(
+            "mail port 465 usually needs security=ssl (current={})",
+            config.security,
+        )
+    elif config.smtp_port == 587 and config.security == "ssl":
+        logger.warning("mail port 587 usually needs security=starttls, not ssl")
+
     try:
         context = ssl.create_default_context()
         if config.security == "ssl":
@@ -227,6 +236,9 @@ def send_mail(
                 smtp.ehlo()
                 smtp.starttls(context=context)
                 smtp.ehlo()
+            elif config.security == "ssl":
+                # Some providers drop the session if AUTH precedes EHLO after SSL.
+                smtp.ehlo()
             if config.username:
                 smtp.login(config.username, password)
             smtp.send_message(
@@ -236,12 +248,18 @@ def send_mail(
             )
     except (smtplib.SMTPException, OSError) as exc:
         logger.warning(
-            "mail send failed: {} code={}",
+            "mail send failed: {} code={} endpoint={} auth_user={}",
             type(exc).__name__,
             getattr(exc, "smtp_code", "-"),
+            endpoint,
+            bool(config.username),
         )
+        hint = ""
+        if isinstance(exc, smtplib.SMTPServerDisconnected):
+            hint = "；请核对端口与加密：465→SSL，587→STARTTLS"
         raise MailSendError(
-            "smtp_error", f"发送失败：{type(exc).__name__}（详见日志）"
+            "smtp_error",
+            f"发送失败：{type(exc).__name__}（{endpoint}{hint}；详见日志）",
         ) from exc
 
-    logger.info("mail sent to {} recipient(s)", len(recipients))
+    logger.info("mail sent to {} recipient(s) via {}", len(recipients), endpoint)

@@ -86,9 +86,27 @@ def list_by_pr_number(db: Session, repository_id: int, pr_number: int) -> list[I
     return list(db.scalars(stmt))
 
 
-CONTENT_ACTIONS = {"opened", "edited", "labeled", "unlabeled"}
-STATE_ACTIONS = {"opened", "edited", "labeled", "unlabeled", "closed", "reopened"}
+CONTENT_ACTIONS = {"opened", "edited", "labeled", "unlabeled", "typed", "untyped"}
+STATE_ACTIONS = {
+    "opened",
+    "edited",
+    "labeled",
+    "unlabeled",
+    "typed",
+    "untyped",
+    "closed",
+    "reopened",
+}
 EARLY_STATUSES = {"pending_classify", "recorded", "support_open"}
+
+
+def _finish(db: Session, row: Issue, *, commit: bool) -> Issue:
+    if commit:
+        db.commit()
+        db.refresh(row)
+    else:
+        db.flush()
+    return row
 
 
 def upsert_from_webhook(
@@ -105,6 +123,9 @@ def upsert_from_webhook(
     label_names: list[str],
     github_updated_at: datetime | None,
     action: str,
+    github_issue_type: str | None = None,
+    github_issue_type_set: bool = False,
+    commit: bool = True,
 ) -> Issue:
     row = get_by_repo_number(db, repository_id, number)
     kind, status = classify_labels(label_names)
@@ -124,6 +145,7 @@ def upsert_from_webhook(
                 kind=kind,
                 status=status,
                 label_names=label_names,
+                github_issue_type=github_issue_type,
                 github_state_updated_at=event_time,
                 deleted_at=event_time or datetime.now(timezone.utc),
             )
@@ -133,9 +155,7 @@ def upsert_from_webhook(
             row.deleted_at = event_time or datetime.now(timezone.utc)
             if event_time is not None:
                 row.github_state_updated_at = event_time
-        db.commit()
-        db.refresh(row)
-        return row
+        return _finish(db, row, commit=commit)
 
     if row is None:
         row = Issue(
@@ -150,6 +170,7 @@ def upsert_from_webhook(
             kind=kind,
             status=status,
             label_names=label_names,
+            github_issue_type=github_issue_type,
             github_updated_at=event_time,
             github_state_updated_at=event_time,
             branch_name=f"issue/{number}",
@@ -157,9 +178,7 @@ def upsert_from_webhook(
         db.add(row)
     elif row.deleted_at is not None:
         # Soft-deleted rows are terminal; ignore late Issue events.
-        db.commit()
-        db.refresh(row)
-        return row
+        return _finish(db, row, commit=commit)
     else:
         if action in CONTENT_ACTIONS and _event_wins(row.github_updated_at, event_time):
             row.github_issue_id = github_issue_id
@@ -168,6 +187,8 @@ def upsert_from_webhook(
             row.html_url = html_url
             row.author_login = author_login
             row.label_names = label_names
+            if github_issue_type_set:
+                row.github_issue_type = github_issue_type
             if event_time is not None:
                 row.github_updated_at = event_time
             if not kind_locked(row.status) and row.status in EARLY_STATUSES:
@@ -186,9 +207,17 @@ def upsert_from_webhook(
             if event_time is not None:
                 row.github_state_updated_at = event_time
 
-    db.commit()
-    db.refresh(row)
-    return row
+    return _finish(db, row, commit=commit)
+
+
+def list_all_for_repo(db: Session, repository_id: int) -> list[Issue]:
+    """All local rows for a repo, including soft-deleted ones, by number."""
+    stmt = (
+        select(Issue)
+        .where(Issue.repository_id == repository_id)
+        .order_by(Issue.number.asc())
+    )
+    return list(db.scalars(stmt))
 
 
 def list_for_repo(

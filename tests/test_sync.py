@@ -5,6 +5,7 @@ from datetime import datetime, timezone
 from sqlalchemy.orm import Session
 
 from app.crud import company as company_crud
+from app.crud import issue as issue_crud
 from app.crud import repository as repository_crud
 from app.crud import webhook_delivery as delivery_crud
 from app.services.github_api import GitHubAPIError
@@ -284,6 +285,139 @@ def test_sync_normalizes_missing_and_unknown_values(db: Session) -> None:
     assert repo.pushed_at == datetime(2026, 1, 2, 3, 4, 5, tzinfo=timezone.utc)
     assert repo.homepage is None
     assert repo.visibility is None
+
+
+def _issue_payload(
+    repo_id: int,
+    *,
+    action: str,
+    updated_at: str,
+    labels: list | None = None,
+    issue_type=...,
+) -> dict:
+    issue = {
+        "id": repo_id + 1,
+        "number": 1,
+        "title": "t",
+        "body": "b",
+        "html_url": "u",
+        "state": "open",
+        "updated_at": updated_at,
+        "user": {"login": "a"},
+        "labels": labels if labels is not None else [{"name": "功能迭代"}],
+    }
+    if issue_type is not ...:
+        issue["type"] = issue_type
+    return {"action": action, "issue": issue, "repository": {"id": repo_id}}
+
+
+def _get_issue(db: Session, github_repo_id: int):
+    repo = repository_crud.get_by_github_repo_id(db, github_repo_id)
+    assert repo is not None
+    return issue_crud.get_by_repo_number(db, repo.id, 1)
+
+
+def test_webhook_type_and_untyped(db: Session) -> None:
+    _queue(
+        db,
+        "type1",
+        _issue_payload(
+            500,
+            action="opened",
+            updated_at="2026-01-01T00:00:00Z",
+            issue_type={"id": 1, "name": "Bug"},
+        ),
+    )
+    assert process_one_delivery(db, FakeClient()) is True
+    issue = _get_issue(db, 500)
+    assert issue is not None
+    assert issue.github_issue_type == "Bug"
+
+    _queue(
+        db,
+        "type2",
+        _issue_payload(
+            500,
+            action="untyped",
+            updated_at="2026-01-02T00:00:00Z",
+            issue_type=None,
+        ),
+    )
+    assert process_one_delivery(db, FakeClient()) is True
+    db.refresh(issue)
+    assert issue.github_issue_type is None
+
+
+def test_typed_does_not_change_kind_and_missing_type_is_preserved(db: Session) -> None:
+    _queue(
+        db,
+        "type3",
+        _issue_payload(
+            501,
+            action="opened",
+            updated_at="2026-01-01T00:00:00Z",
+            issue_type={"id": 1, "name": "Bug"},
+        ),
+    )
+    process_one_delivery(db, FakeClient())
+    issue = _get_issue(db, 501)
+    assert issue is not None
+    assert issue.kind == "feature"
+    assert issue.status == "recorded"
+
+    _queue(
+        db,
+        "type4",
+        _issue_payload(
+            501,
+            action="typed",
+            updated_at="2026-01-02T00:00:00Z",
+            issue_type={"id": 2, "name": "Task"},
+        ),
+    )
+    process_one_delivery(db, FakeClient())
+    db.refresh(issue)
+    assert issue.github_issue_type == "Task"
+    assert issue.kind == "feature"
+    assert issue.status == "recorded"
+
+    # A payload without the type key must not clear the stored value.
+    _queue(
+        db,
+        "type5",
+        _issue_payload(
+            501,
+            action="edited",
+            updated_at="2026-01-03T00:00:00Z",
+        ),
+    )
+    process_one_delivery(db, FakeClient())
+    db.refresh(issue)
+    assert issue.github_issue_type == "Task"
+
+
+def test_webhook_labels_are_trimmed_and_deduped(db: Session) -> None:
+    _queue(
+        db,
+        "labels1",
+        _issue_payload(
+            502,
+            action="opened",
+            updated_at="2026-01-01T00:00:00Z",
+            labels=[
+                {"name": "功能迭代"},
+                " bug ",
+                {"name": "   "},
+                "bug",
+                {"name": "功能迭代"},
+                7,
+            ],
+        ),
+    )
+    process_one_delivery(db, FakeClient())
+    issue = _get_issue(db, 502)
+    assert issue is not None
+    assert issue.label_names == ["功能迭代", "bug"]
 
 
 def test_resync_updates_meta_and_keeps_local_config(db: Session) -> None:

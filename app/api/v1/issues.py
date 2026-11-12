@@ -1,11 +1,14 @@
 from __future__ import annotations
 
+import time
 from typing import Annotated
-from urllib.parse import quote, urlencode
+from urllib.parse import parse_qsl, quote, urlencode, urlsplit
 
 import httpx
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, Form, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
+from sqlalchemy import text
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from app.core.security import csrf_token_for_jti
@@ -22,6 +25,7 @@ from app.services.config_agent import read_agent
 from app.services.foundation import foundation_relpath, read_foundation_from_origin
 from app.services.github_api import GitHubAPIError, GitHubClient
 from app.services.ingest import refresh_issue_from_github
+from app.services import issue_sync
 from app.services.issues import (
     KIND_FEATURE,
     KIND_SUPPORT,
@@ -101,6 +105,51 @@ def _refresh_error_message(exc: Exception) -> str:
         if exc.status_code == 429:
             return "刷新失败：GitHub 限流，请稍后再试"
     return "刷新失败：暂时无法连接 GitHub，请稍后重试"
+
+
+def _safe_issue_list_next(repo_id: int, raw: str | None) -> str:
+    """Keep the current list filters; drop stale flash params and reject redirects."""
+    default = f"/repos/{repo_id}/issues"
+    if not raw:
+        return default
+    parts = urlsplit(raw)
+    if parts.scheme or parts.netloc:
+        return default
+    prefix = f"/repos/{repo_id}/issues"
+    if parts.path != prefix and not parts.path.startswith(prefix + "/"):
+        return default
+    query = urlencode(
+        [
+            (key, value)
+            for key, value in parse_qsl(parts.query, keep_blank_values=True)
+            if key not in {"flash", "msg"}
+        ]
+    )
+    return parts.path + (f"?{query}" if query else "")
+
+
+def _try_sync_lock(db: Session, repo_id: int) -> bool:
+    key = f"github_workflow:issue-sync:{repo_id}"
+    return bool(
+        db.scalar(
+            text("SELECT pg_try_advisory_xact_lock(hashtext(:key))"),
+            {"key": key},
+        )
+    )
+
+
+def _sync_error_message(exc: Exception) -> str:
+    if isinstance(exc, issue_sync.IssueSyncError):
+        return f"同步失败：{exc}"
+    if isinstance(exc, GitHubAPIError):
+        if exc.status_code in (401, 403):
+            return "同步失败：GitHub 授权失败，请检查访问令牌"
+        if exc.status_code in (404, 410):
+            return "同步失败：GitHub 上找不到该仓库，可能已改名或无权限；请先重新同步仓库"
+        if exc.status_code == 429:
+            return "同步失败：GitHub 限流，请稍后重试；未写入任何变更"
+        return "同步失败：无法连接 GitHub，未写入任何变更"
+    return "同步失败：无法连接 GitHub，未写入任何变更"
 
 
 @router.get("/repos/{repo_id}/issues", response_class=HTMLResponse)
@@ -205,6 +254,55 @@ def issue_list(
             ],
         ),
     )
+
+
+def _redirect_with_flash(url: str, flash: str, msg: str) -> RedirectResponse:
+    separator = "&" if "?" in url else "?"
+    return RedirectResponse(
+        f"{url}{separator}flash={flash}&msg={quote(msg)}",
+        status_code=303,
+    )
+
+
+@router.post("/repos/{repo_id}/issues/sync")
+def sync_repo_issues(
+    repo_id: int,
+    request: Request,
+    db: Annotated[Session, Depends(get_db)],
+    user: Annotated[User, Depends(require_csrf)],
+    next_url: Annotated[str, Form(alias="next")] = "",
+):
+    repo = repository_crud.get(db, repo_id)
+    if repo is None:
+        return templates.TemplateResponse(
+            request, "404.html", _ctx(user, message="未找到仓库"), status_code=404
+        )
+    target = _safe_issue_list_next(repo_id, next_url)
+    if not _try_sync_lock(db, repo.id):
+        db.commit()
+        return _redirect_with_flash(target, "error", "该仓库正在同步，请稍后再试")
+
+    client = GitHubClient()
+    try:
+        result = issue_sync.sync_repository_issues(
+            db,
+            client,
+            repo,
+            deadline=time.monotonic() + issue_sync.SYNC_TIMEOUT_SECONDS,
+        )
+    except SQLAlchemyError:
+        db.rollback()
+        return _redirect_with_flash(target, "error", "同步失败：写入数据库失败，已回滚")
+    except (issue_sync.IssueSyncError, GitHubAPIError, httpx.HTTPError) as exc:
+        # These failures happen before the write phase, so there is nothing to
+        # roll back; committing the empty transaction releases the advisory lock.
+        db.commit()
+        return _redirect_with_flash(target, "error", _sync_error_message(exc))
+    finally:
+        client.close()
+
+    flash = "error" if result.failures else "ok"
+    return _redirect_with_flash(target, flash, issue_sync.summary_text(result))
 
 
 @router.get("/issues/{issue_id}", response_class=HTMLResponse)

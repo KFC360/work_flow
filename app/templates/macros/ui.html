@@ -132,6 +132,35 @@
 {{ badge(meta[1], meta[0], meta[2]) }}
 {%- endmacro %}
 
+{% macro github_type_badge(value) -%}
+{% if value %}
+<span class="badge badge-sm badge-outline max-w-[16rem] whitespace-nowrap">
+  <span class="max-w-[14rem] truncate" title="{{ value }}">{{ value }}</span>
+</span>
+{% else %}
+<span class="text-base-content/40">—</span>
+{% endif %}
+{%- endmacro %}
+
+{% macro label_badges(labels, limit=None, size='badge-xs') -%}
+{% set names = labels or [] %}
+{% if names %}
+{% set shown = names[:limit] if limit else names %}
+<div class="flex min-w-0 flex-wrap items-center gap-1">
+  {% for name in shown %}
+  <span class="badge {{ size }} badge-ghost max-w-[14rem] whitespace-nowrap">
+    <span class="max-w-[13rem] truncate" title="{{ name }}">{{ name }}</span>
+  </span>
+  {% endfor %}
+  {% if limit and names|length > limit %}
+  <span class="badge {{ size }} badge-ghost whitespace-nowrap" title="{{ names | join(', ') }}">+{{ names|length - limit }}</span>
+  {% endif %}
+</div>
+{% else %}
+<span class="text-base-content/40">—</span>
+{% endif %}
+{%- endmacro %}
+
 {% macro job_badge(status) -%}
 {% set meta = JOB_META.get(status, (status, 'neutral', 'info')) %}
 {{ badge(meta[1], meta[0], meta[2]) }}

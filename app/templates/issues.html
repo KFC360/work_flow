@@ -1,11 +1,20 @@
 {% extends "base.html" %}
-{% from "macros/ui.html" import page_header, kind_badge, list_status_badge, empty_state, pagination as pagination_bar, issue_actions %}
+{% from "macros/ui.html" import page_header, kind_badge, list_status_badge, empty_state, pagination as pagination_bar, issue_actions, github_type_badge, label_badges %}
 {% from "macros/icons.html" import icon %}
 {% block title %}Issue · {{ repo.github_full_name }}{% endblock %}
 
 {% block page_header %}
 {% call page_header('Issue', '按编号倒序；筛选条件会写入 URL。操作可用性与流程状态严格对应。', '仓库 · ' ~ repo.github_full_name) %}
   <span class="text-sm text-base-content/70">当前结果 <span class="font-mono text-base-content" data-count="total">{{ total }}</span> 条</span>
+  <form method="post" action="/repos/{{ repo.id }}/issues/sync" class="inline-flex" data-gw-sync-form>
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+    <input type="hidden" name="next" value="{{ request.url.path }}{% if request.url.query %}?{{ request.url.query }}{% endif %}" />
+    <button type="submit" class="btn btn-sm btn-outline gap-1.5"
+            data-gw-submit data-gw-busy-label="同步中…"
+            aria-label="从 GitHub 全量更新本仓库 Issue 状态">
+      {{ icon('refresh') }}<span>手动更新 Issues 状态</span>
+    </button>
+  </form>
 {% endcall %}
 {% endblock %}
 
@@ -69,12 +78,13 @@
 <div class="card card-border overflow-hidden bg-base-100 shadow-sm">
   <div class="card-body p-0">
     <div class="overflow-x-auto">
-      <table class="table min-w-[62rem]">
+      <table class="table min-w-[68rem]">
         <thead>
           <tr>
             <th scope="col">编号</th>
             <th scope="col">标题</th>
             <th scope="col">类型</th>
+            <th scope="col">GitHub Type</th>
             <th scope="col">状态</th>
             <th scope="col">更新</th>
             <th scope="col" class="text-right">操作</th>
@@ -96,8 +106,10 @@
               {% if item.issue.author_login %}
               <span class="mt-0.5 block text-xs text-base-content/60">@{{ item.issue.author_login }}</span>
               {% endif %}
+              <div class="mt-1">{{ label_badges(item.issue.label_names, limit=3) }}</div>
             </td>
             <td class="align-top">{{ kind_badge(item.issue.kind) }}</td>
+            <td class="align-top">{{ github_type_badge(item.issue.github_issue_type) }}</td>
             <td class="align-top">{{ list_status_badge(item.issue) }}</td>
             <td class="align-top whitespace-nowrap font-mono text-xs text-base-content/70"{% if item.issue.github_updated_at or item.issue.updated_at %} title="{{ (item.issue.github_updated_at or item.issue.updated_at) | gw_iso }}"{% endif %}>{{ (item.issue.github_updated_at or item.issue.updated_at) | gw_time }} UTC</td>
             <td class="align-top">

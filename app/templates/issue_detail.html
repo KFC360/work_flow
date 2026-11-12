@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% from "macros/ui.html" import page_header, kind_badge, issue_status_badge, pr_state_badge, github_state_badge, job_badge, phase_label, worker_badge, issue_actions, live_status, action_label %}
+{% from "macros/ui.html" import page_header, kind_badge, issue_status_badge, pr_state_badge, github_state_badge, job_badge, phase_label, worker_badge, issue_actions, live_status, action_label, github_type_badge, label_badges %}
 {% from "macros/icons.html" import icon %}
 {% block title %}#{{ issue.number }} {{ issue.title }}{% endblock %}
 
@@ -69,6 +69,10 @@
         <dd class="mt-1">{{ kind_badge(issue.kind) }}</dd>
       </div>
       <div>
+        <dt class="text-xs text-base-content/60">GitHub Type</dt>
+        <dd class="mt-1">{{ github_type_badge(issue.github_issue_type) }}</dd>
+      </div>
+      <div>
         <dt class="text-xs text-base-content/60">流程状态</dt>
         <dd class="mt-1">{{ issue_status_badge(issue.status, status_label) }}</dd>
       </div>
@@ -79,6 +83,10 @@
       <div>
         <dt class="text-xs text-base-content/60">作者</dt>
         <dd class="mt-1 break-all text-base-content">{{ ('@' ~ issue.author_login) if issue.author_login else '—' }}</dd>
+      </div>
+      <div class="col-span-2 md:col-span-4">
+        <dt class="text-xs text-base-content/60">标签</dt>
+        <dd class="mt-1">{{ label_badges(issue.label_names, size='badge-sm') }}</dd>
       </div>
       <div>
         <dt class="text-xs text-base-content/60">更新</dt>

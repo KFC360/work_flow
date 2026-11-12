@@ -48,7 +48,18 @@ def _seed_company_repo(db: Session, *, account_type: str = "User"):
     return company, repo
 
 
-def _seed_issue(db: Session, repo, *, number: int, status: str, kind: str, title: str):
+def _seed_issue(
+    db: Session,
+    repo,
+    *,
+    number: int,
+    status: str,
+    kind: str,
+    title: str,
+    labels: list[str] | None = None,
+    issue_type: str | None = None,
+    with_doc: bool = True,
+):
     issue = issue_crud.upsert_from_webhook(
         db,
         repository_id=repo.id,
@@ -59,15 +70,18 @@ def _seed_issue(db: Session, repo, *, number: int, status: str, kind: str, title
         html_url=f"https://github.com/acme/demo/issues/{number}",
         author_login="dev",
         github_state="open",
-        label_names=[],
+        label_names=labels or [],
         github_updated_at=datetime(2026, 11, 10, 8, 30, tzinfo=timezone.utc),
         action="opened",
+        github_issue_type=issue_type,
+        github_issue_type_set=True,
     )
     issue.status = status
     issue.kind = kind
-    issue.iteration_no = 1
-    issue.design_doc_path = "docs/v0001-1/design.md"
-    issue.design_doc_text = "# design"
+    if with_doc:
+        issue.iteration_no = 1
+        issue.design_doc_path = "docs/v0001-1/design.md"
+        issue.design_doc_text = "# design"
     db.commit()
     db.refresh(issue)
     return issue
@@ -138,9 +152,84 @@ def test_console_pages_render(client: TestClient, db: Session, tmp_path: Path, m
     resp = client.get("/companies/999999")
     assert resp.status_code == 404
     assert "页面未找到" in resp.text
+    assert "<footer" in resp.text
 
     resp = client.get("/login", follow_redirects=False)
     assert resp.status_code == 303
+
+
+def test_layout_footer_and_repo_input_constraints() -> None:
+    root = Path(__file__).resolve().parents[1] / "app/templates"
+    base = (root / "base.html").read_text(encoding="utf-8")
+    assert 'class="flex min-h-dvh flex-col ' in base
+    assert 'class="mx-auto w-full max-w-7xl flex-1 ' in base
+    footer = base.split("<footer", 1)[1].split("</footer>", 1)[0]
+    assert "fixed" not in footer
+
+    repo = (root / "repo.html").read_text(encoding="utf-8")
+    assert 'class="grid min-w-0 gap-6 lg:grid-cols-3"' in repo
+    assert 'class="card-body min-w-0 p-5"' in repo
+    assert 'class="w-full min-w-0 space-y-4"' in repo
+    assert 'class="fieldset w-full min-w-0"' in repo
+    assert repo.count("class=\"input w-full min-w-0 max-w-full font-mono text-sm") == 2
+    assert 'title="{{ local_path }}"' in repo
+    assert 'title="{{ doc_dir }}"' in repo
+
+    scripts = (root / "partials/app_scripts.html").read_text(encoding="utf-8")
+    assert "data-gw-busy-label" in scripts
+
+
+def test_issue_list_and_detail_show_type_and_labels(
+    client: TestClient, db: Session
+) -> None:
+    _login(client, db)
+    _company, repo = _seed_company_repo(db)
+    issue = _seed_issue(
+        db,
+        repo,
+        number=12,
+        status="recorded",
+        kind="feature",
+        title="类型与标签",
+        labels=["功能迭代", "bug", "docs", "extra"],
+        issue_type="Bug",
+    )
+    _seed_issue(
+        db,
+        repo,
+        number=13,
+        status="recorded",
+        kind="feature",
+        title="没有类型和标签",
+        with_doc=False,
+    )
+
+    resp = client.get(f"/repos/{repo.id}/issues")
+    assert resp.status_code == 200
+    text = resp.text
+    assert f'action="/repos/{repo.id}/issues/sync"' in text
+    assert 'method="post"' in text
+    assert "手动更新 Issues 状态" in text
+    assert 'data-gw-busy-label="同步中…"' in text
+    assert "GitHub Type" in text
+    assert ">Bug<" in text
+    assert ">bug<" in text
+    assert ">+1<" in text
+    assert 'name="type"' not in text
+    assert 'name="label"' not in text
+
+    resp = client.get(f"/issues/{issue.id}")
+    assert resp.status_code == 200
+    detail = resp.text
+    assert "GitHub Type" in detail
+    assert ">Bug<" in detail
+    assert ">docs<" in detail
+    assert ">extra<" in detail
+    assert 'name="type"' not in detail
+    assert 'name="label"' not in detail
+
+    resp = client.get(f"/repos/{repo.id}/issues")
+    assert resp.text.count(">—<") >= 1
 
 
 def test_empty_and_filtered_states(client: TestClient, db: Session) -> None:

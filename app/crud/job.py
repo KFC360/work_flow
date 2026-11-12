@@ -51,7 +51,7 @@ def enqueue(
     return job
 
 
-def cancel_queued_for_issue(db: Session, issue_id: int) -> int:
+def cancel_queued_for_issue(db: Session, issue_id: int, *, commit: bool = True) -> int:
     rows = list(
         db.scalars(
             select(Job).where(Job.issue_id == issue_id, Job.status == "queued")
@@ -62,7 +62,10 @@ def cancel_queued_for_issue(db: Session, issue_id: int) -> int:
         job.status = "cancelled"
         job.finished_at = now
         job.error = "Issue closed"
-    db.commit()
+    if commit:
+        db.commit()
+    else:
+        db.flush()
     return len(rows)
 
 

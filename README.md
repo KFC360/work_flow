@@ -18,20 +18,27 @@
 
 | 进程 | 生产 | 本地开发 / 试跑 |
 | --- | --- | --- |
-| PostgreSQL | **宿主机**系统服务，不用 Compose | 可选 `compose.yaml`（端口 `55438`） |
-| Web / Worker | **Supervisor** 常驻（见下）；只绑 `127.0.0.1`，前面用 Nginx | 终端里 `uv run` 前台跑即可 |
+| PostgreSQL | **Docker Compose** 服务 `db`（数据卷持久化） | `docker compose up -d db`（映射 `127.0.0.1:55438`） |
+| Web / Worker | **Docker Compose**（同一镜像，不同 command） | 终端里 `uv run` 前台跑即可 |
+| Agent CLI | **宿主机** `opencode` / `claude`，同路径挂进 Worker | 本机 PATH |
 | 反代 | Nginx → `127.0.0.1:8095` | 可直连本机 8095 |
 
-`DATABASE_URL` 示例：
+生产 `DATABASE_URL` 示例（容器内）：
 
-`postgresql+psycopg://github_workflow:密码@127.0.0.1:5432/github_workflow`
+`postgresql+psycopg://github_workflow:密码@db:5432/github_workflow`
+
+本机进程连 Compose 库：
+
+`postgresql+psycopg://github_workflow:密码@127.0.0.1:55438/github_workflow`
 
 ## 快速开始（本机试跑，不是生产常驻方式）
 
 ```bash
 cp .env.example .env
 cp config.yaml.example config.yaml
-# 填写 DATABASE_URL、JWT_SECRET_KEY、GITHUB_*、APP_ADMIN_PASSWORD、SMTP_PASSWORD
+# 填写 DATABASE_URL（本机连库用 127.0.0.1:55438）、JWT_SECRET_KEY、GITHUB_*、APP_ADMIN_PASSWORD、SMTP_PASSWORD
+
+docker compose up -d db
 
 # uv sync：自动创建 .venv 并安装依赖
 uv sync --extra dev
@@ -44,8 +51,8 @@ uv run python -m app.tasks.worker
 
 | 项 | 值 |
 | --- | --- |
-| 应用端口 | `8095`（仅本机） |
-| PostgreSQL（生产） | 宿主机 `5432`（或你的实际端口） |
+| 应用端口 | `8095`（生产由 Compose 绑 `127.0.0.1:8095`） |
+| PostgreSQL（Compose） | 容器内 `db:5432`；宿主机排障口 `127.0.0.1:55438` |
 | Webhook | `POST /api/v1/github-callback/` |
 | 健康检查 | `GET /healthz` |
 | 登录 | `GET/POST /login`，API `POST /token` |
@@ -71,40 +78,38 @@ mail:
 - 页面「发送测试邮件」同步发送，最长约 10 秒；只使用已保存配置，留空收件人时用 `mail.default_to`。
 - 业务代码复用 `app/services/mail.py` 的 `send_mail(to, subject, html_body, *, text_fallback=None)`；HTML 在发送入口按白名单消毒，失败抛 `MailError`。
 - 未启用、缺主机 / 端口 / 发件人、缺 `SMTP_PASSWORD` 或收件人时返回明确短消息；SMTP 原始异常只写日志。
+- 网易邮箱（163/126 等）请用 **465 + SSL**；发件人须与 SMTP 用户名同为完整邮箱，密码为授权码。
 
 ## 生产部署
 
-仍是同一套 Python 应用，生产用 **Supervisor** 保活。不要长期挂在 SSH 里的 `uv run`。
+生产用 **Docker Compose** 跑 `db` + `web` + **唯一** `worker`。Agent CLI 仍装在宿主机，按相同绝对路径挂进 Worker。不要长期挂在 SSH 里的 `uv run`，也不要再装 Supervisor（旧 conf 仅作回滚参考）。
 
 推荐布局：
 
-1. 宿主机 PostgreSQL：建用户 / 库 / schema
-2. 项目目录放好 `.env`、`config.yaml`，`uv sync`，`uv run alembic upgrade head`
-3. 建 `WORKTREE_ROOT`（如 `/var/lib/github-workflow/worktrees`），保证运行用户可写
-4. **Supervisor**：Web + **唯一** Worker（示例 `deploy/supervisor/github-workflow.conf`）
-5. Nginx 反代到 `127.0.0.1:8095`（`deploy/nginx/api.kfc360.xyz.conf`）
+1. 安装 Docker Engine + Compose 插件；部署用户可无 sudo 执行 `docker compose`
+2. 项目目录放好 `.env`、`config.yaml`（见 `.env.example`：`DATABASE_URL` 用 `@db:5432`，并设 `HOST_UID` / `HOST_GID` / `HOST_HOME` / `WORKTREE_ROOT` / `REPOS_ROOT`）
+3. 建 `WORKTREE_ROOT` 与 `REPOS_ROOT`（如 `/var/lib/github-workflow/worktrees`、`/home/linuxuser/repos`），保证部署用户可写
+4. 宿主机安装并配置 `opencode` / `claude`（`PATH` 含 `${HOST_HOME}/.opencode/bin` 与 `${HOST_HOME}/.local/bin`）
+5. `./scripts/docker_deploy.sh`（build、migrate、`up -d`、打 `/healthz`）
+6. Nginx 反代到 `127.0.0.1:8095`（`deploy/nginx/api.kfc360.xyz.conf`）
 
-```bash
-# 按机器改 conf 里的 directory / user / uv 路径后：
-sudo cp deploy/supervisor/github-workflow.conf /etc/supervisor/conf.d/
-sudo supervisorctl reread
-sudo supervisorctl update
-sudo supervisorctl start github-workflow:*
-sudo supervisorctl status
-```
-
-升级代码：
+从 Supervisor 切过来：见 [`deploy/docker/CUTOVER.md`](deploy/docker/CUTOVER.md)（含宿主机 Postgres dump/restore）。
 
 ```bash
 cd /path/to/github_workflow   # 应用目录，如 ~/sites/work_flow
-git pull
-uv sync --extra dev
-uv run alembic upgrade head
-./scripts/sync_opencode_skills.sh   # 挂载内置 skills 给 OpenCode（软链到 ~/.config/opencode/skills）
-sudo supervisorctl restart github-workflow:*
+./scripts/docker_deploy.sh
+docker compose ps
 ```
 
-内置 skills 在 `agent_skills/`（`documentation`、`ui-ux-pro-max`、`karpathy-guidelines`）。权威在应用仓；生产挂到 OpenCode 全局发现路径，**不**写入目标仓 worktree。Worker 跑 `opencode run` 时是非交互的：须在运行用户的 `~/.config/opencode/opencode.json` **预授权**检索（合并 `deploy/opencode/opencode.json.example`）：
+升级代码（CD 同样走这条路径）：
+
+```bash
+cd /path/to/github_workflow
+git pull --ff-only origin master
+./scripts/docker_deploy.sh
+```
+
+内置 skills 在 `agent_skills/`（`documentation`、`ui-ux-pro-max`、`karpathy-guidelines`）。权威在应用仓；生产挂到 **宿主机** OpenCode 全局发现路径（`./scripts/sync_opencode_skills.sh`），再随 `HOST_HOME` 挂进 Worker，**不**写入目标仓 worktree。Worker 跑 `opencode run` 时是非交互的：须在运行用户的 `~/.config/opencode/opencode.json` **预授权**检索（合并 `deploy/opencode/opencode.json.example`）：
 
 - V1：`"permission": { "websearch": "allow", "webfetch": "allow", "question": "deny" }`
 - V2：`"permissions": [{ "action": "websearch", "resource": "*", "effect": "allow" }, …]`
@@ -114,11 +119,7 @@ sudo supervisorctl restart github-workflow:*
 
 写文档任务：若代理退出码非 0 但目标 `design.md` 已写好且校验通过，系统仍记成功（避免「写完后又搜一次被取消」整单失败）。
 
-生成代码时 Worker 可为代理创建临时库 `gw_job_{job_id}`（`AGENT_TEST_DB_ENABLED`，默认开），只把该库的 URL 注入代理环境；任务结束删除。生产角色需 `CREATEDB`：
-
-```bash
-sudo -u postgres psql -c 'ALTER ROLE github_workflow CREATEDB;'
-```
+生成代码时 Worker 可为代理创建临时库 `gw_job_{job_id}`（`AGENT_TEST_DB_ENABLED`，默认开），只把该库的 URL 注入代理环境；任务结束删除。Compose 里的 `db` 用户默认具备建库权限。
 
 目标仓（独立 clone，如 `/home/linuxuser/repos/work_flow`）也需含基石文档（与应用仓同一远程时 `git pull` 即可）：
 
@@ -127,13 +128,20 @@ test -f /home/linuxuser/repos/work_flow/docs/README.md && \
 test -f /home/linuxuser/repos/work_flow/docs/architecture/design.md && echo ok
 ```
 
+约束：
+
+- Worker **必须**能 `exec` 到宿主机同路径的 `opencode`/`claude`；升级 CLI 仍在宿主机做
+- `local_path`、`WORKTREE_ROOT` 在容器内外路径必须一致（bind mount 同 path）
+- **不要** `docker compose up --scale worker=2`
+- 改 `.env` / `config.yaml` 后：`docker compose up -d`（或 `./scripts/docker_deploy.sh`）重启对应服务
+
 ## 安全与运维
 
-- 生产库在宿主机维护；Web / Worker 经 `127.0.0.1` 连库
+- 生产库在 Compose 卷 `github_workflow_pg`；Web / Worker 经服务名 `db` 连库
 - 部署前轮换 Webhook Secret，只放环境变量 / `.env`，勿进 git
 - Nginx：`/docs`、`/redoc`、`/openapi.json` 用 `auth_basic`；Webhook **不要** Basic Auth
 - 页面 JWT + CSRF；`WORKTREE_ROOT` 示例见上
-- 任务日志：`logs/jobs/{id}.log`；网页 Issue 详情可看尾部；Worker 心跳：`logs/worker-heartbeat.json`
+- 任务日志：`logs/jobs/{id}.log`（挂载进容器）；网页 Issue 详情可看尾部；Worker 心跳：`logs/worker-heartbeat.json`
 
 ## 测试
 
@@ -142,10 +150,10 @@ uv run pytest
 ```
 
 CI：`.github/workflows/ci.yml` — `pull_request` / `master` push 时跑 pytest。  
-CD：`.github/workflows/deploy.yml` — **PR 合并进 `master` 后** SSH 到服务器 `git pull`、`uv sync`、重启 Supervisor。本系统只负责开到 PR；合并由人在 GitHub 完成，合并即触发 CD。
+CD：`.github/workflows/deploy.yml` — **PR 合并进 `master` 后** SSH 到服务器 `git pull` 并执行 `./scripts/docker_deploy.sh`。本系统只负责开到 PR；合并由人在 GitHub 完成，合并即触发 CD。
 
-CD 需在仓库 **Settings → Secrets and variables → Actions**（Repository secrets，不要只放在 Environment）配置：`DEPLOY_HOST`、`DEPLOY_USER`、`DEPLOY_SSH_KEY`、`DEPLOY_PATH`（可选 `DEPLOY_PORT`）。服务器账号需能对该目录 `git pull`，并免密 `sudo supervisorctl restart 'github-workflow:*'`。
+CD 需在仓库 **Settings → Secrets and variables → Actions**（Repository secrets，不要只放在 Environment）配置：`DEPLOY_HOST`、`DEPLOY_USER`、`DEPLOY_SSH_KEY`、`DEPLOY_PATH`（可选 `DEPLOY_PORT`）。服务器账号需能对该目录 `git pull`，并免交互执行 `docker compose`。
 
 ## 目录
 
-本目录即实现根。入口：`main:app`、`python -m app.tasks.worker`。
+本目录即实现根。入口：`main:app`、`python -m app.tasks.worker`。镜像：`Dockerfile`；编排：`compose.yaml`。

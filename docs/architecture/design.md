@@ -77,7 +77,7 @@
 | 口令哈希 | pwdlib（Argon2） | 只存哈希，对应[官网 JWT 教程](https://fastapi.tiangolo.com/tutorial/security/oauth2-jwt/) |
 | 令牌 | PyJWT | HS256，声明 `sub` 和 `exp` |
 | 测试 | pytest + httpx | git 与代理在测试里替换 |
-| 部署 | Docker Compose 只跑 PostgreSQL | Web 和 Worker 跑在有仓库副本和代理命令的宿主机上 |
+| 部署 | Docker Compose：`db` + `web` + 唯一 `worker` | Agent CLI（opencode/claude）留在宿主机，同路径挂进 Worker；Nginx 仍反代本机 8095 |
 
 页面交互用普通表单。任务进行中时，详情页用一小段原生脚本每 5 秒刷新，不引入 Alpine 或构建工具。
 
@@ -117,7 +117,7 @@ flowchart LR
 | Worker | Inbox 循环同步 GitHub；Pipeline 循环创建隔离 worktree、调用代理、执行 git、创建 PR、写回状态 |
 | PostgreSQL | 唯一的交接处。Web 不直接调用代理 |
 
-宿主机上要能执行 `git`、`opencode` 或 `claude`，并且 `local_path` 对该进程可读写。代理装在镜像里仍然看不到这些工作副本，所以 v1 不把 Web / Worker 放进应用容器。
+生产用 Compose 跑 Web / Worker / PostgreSQL。镜像内装 `git` 与应用依赖，**不**装 agent CLI：Worker 把宿主机的 `opencode` / `claude`、配置目录、`WORKTREE_ROOT` 与仓库父目录按**相同绝对路径**挂进来，这样库里的 `local_path` 与宿主机一致。v1 仍然只跑一个 Worker，不要 scale。
 
 ## 关键决策
 
@@ -923,7 +923,9 @@ Web 的按钮只插入 queued 任务，不提前修改 Issue 流程状态。v1 �
 
 | 变量 | 说明 |
 | --- | --- |
-| `DATABASE_URL` | 例如 `postgresql+psycopg://github_workflow:github_workflow@127.0.0.1:55438/github_workflow` |
+| `DATABASE_URL` | 生产容器内例如 `postgresql+psycopg://github_workflow:github_workflow@db:5432/github_workflow`；本机直连 Compose 映射口用 `127.0.0.1:55438` |
+| `HOST_UID` / `HOST_GID` / `HOST_HOME` | Compose 插值：容器以部署用户身份跑，并挂载该用户的 agent 配置 |
+| `REPOS_ROOT` | 仓库工作副本父目录，与 `local_path` 同路径挂进 Worker |
 | `GITHUB_WEBHOOK_SECRET` | 与 GitHub Webhook 的 Secret 相同，只由部署环境注入。旧值已暴露，部署前必须轮换 |
 | `GITHUB_TOKEN` | 查询组织、用户和仓库，并创建 PR。推送时若 remote 是 HTTPS，也用它，通过一次性的 `http.extraheader` 传入，不写进 remote URL |
 | `GIT_AUTHOR_NAME` / `GIT_AUTHOR_EMAIL` | 提交身份。Committer 使用同一组值 |
@@ -934,17 +936,27 @@ Web 的按钮只插入 queued 任务，不提前修改 Issue 流程状态。v1 �
 | `CODE_TIMEOUT_SEC` | 默认 1800 |
 | `WORKTREE_ROOT` | 系统专用 worktree 根目录，例如 `/var/lib/github-workflow/worktrees` |
 
-应用端口 `8095`，PostgreSQL 主机端口 `55438`。这两个端口避开本仓库已占用的 8090–8094 和 55432–55437。
+应用端口 `8095`（Compose 发布为 `127.0.0.1:8095`），PostgreSQL 在 Compose 网络内为 `db:5432`，宿主机排障口 `127.0.0.1:55438`。这两个宿主机端口避开本仓库已占用的 8090–8094 和 55432–55437。
 
-`compose.yaml` 只启动 PostgreSQL。Web 与 Worker 在宿主机：
+生产：
 
 ```bash
+./scripts/docker_deploy.sh
+# 等价于 build → db up → alembic upgrade head → compose up -d → curl /healthz
+```
+
+本机只起库、进程在宿主机试跑时：
+
+```bash
+docker compose up -d db
 uv run alembic upgrade head
 uv run uvicorn main:app --host 127.0.0.1 --port 8095
 uv run python -m app.tasks.worker
 ```
 
-反向代理配置是 `deploy/nginx/api.kfc360.xyz.conf`。它在 `45.32.110.13` 上把 `https://api.kfc360.xyz` 转到本机 8095。Webhook 地址是 `https://api.kfc360.xyz/api/v1/github-callback/`。管理页面走同一域名，登录后才能使用。应用进程本身绑定 `127.0.0.1`。SSH 使用端口 `22222`，用户 `linuxuser`。
+从 Supervisor 迁到 Compose 的步骤见 `deploy/docker/CUTOVER.md`。
+
+反向代理配置是 `deploy/nginx/api.kfc360.xyz.conf`。它在 `45.32.110.13` 上把 `https://api.kfc360.xyz` 转到本机 8095。Webhook 地址是 `https://api.kfc360.xyz/api/v1/github-callback/`。管理页面走同一域名，登录后才能使用。Compose 的 web 只监听宿主机回环。SSH 使用端口 `22222`，用户 `linuxuser`。
 
 `/docs`、`/redoc` 和 `/openapi.json` 在转到应用之前，由 Nginx 用 `auth_basic` 核对用户名和口令。口令文件在服务器上的 `/etc/nginx/htpasswd/github_workflow_docs`，用 `htpasswd` 生成，不进 git。应用不再给这三条路由挂 JWT 依赖，因此只需登录一次 Basic Auth。其余页面使用 JWT；Webhook 两者都不使用。
 
@@ -1088,16 +1100,23 @@ git 和代理替换成测试双桩。至少覆盖：
 github_workflow/
 ├── main.py                              # 创建 FastAPI，挂 app.api.router，GET /healthz
 ├── pyproject.toml                       # Python 3.11，依赖见技术栈
-├── compose.yaml                         # 只启动 PostgreSQL，主机端口 55438
+├── Dockerfile                           # web/worker 镜像；不含 opencode/claude
+├── compose.yaml                         # db + web + worker；db 映射 127.0.0.1:55438
 ├── alembic.ini                          # script_location = app/alembic
-├── config.yaml.example                  # agent 示例；真实 config.yaml 不进 git
+├── config.yaml.example                  # agent / mail 示例；真实 config.yaml 不进 git
 ├── .env.example                         # 只列变量名，真实值见「配置与部署」
 ├── .gitignore                           # 忽略 .env、config.yaml 与 logs/
 ├── README.md
 ├── deploy/
-│   └── nginx/
-│       └── api.kfc360.xyz.conf          # /docs 使用 auth_basic，其余路径反向代理到 8095
+│   ├── docker/
+│   │   └── CUTOVER.md                   # Supervisor → Compose 一次切换
+│   ├── nginx/
+│   │   └── api.kfc360.xyz.conf          # /docs 使用 auth_basic，其余路径反向代理到 8095
+│   └── supervisor/
+│       └── github-workflow.conf         # DEPRECATED，仅回滚参考
 ├── scripts/
+│   ├── docker_deploy.sh                 # 生产 build / migrate / up / healthz
+│   ├── sync_opencode_skills.sh          # 宿主机挂载内置 skills
 │   ├── db_makemigrations.sh             # alembic revision
 │   └── db_migrate.sh                    # alembic upgrade head
 ├── logs/                                # 运行时产生，不进 git

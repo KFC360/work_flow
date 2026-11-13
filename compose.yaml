@@ -1,3 +1,30 @@
+# Production: db + web + worker.
+# Local DB-only: docker compose up -d db
+#
+# Required host-side env (also used for compose interpolation), see .env.example:
+#   HOST_UID / HOST_GID  — match the deploy user (e.g. linuxuser)
+#   HOST_HOME            — that user's home (agent configs + binaries)
+#   WORKTREE_ROOT        — same absolute path inside the worker
+#   REPOS_ROOT           — parent of repository local_path clones
+# Production DATABASE_URL must use host `db` and port 5432.
+
+x-app: &app
+  build:
+    context: .
+    dockerfile: Dockerfile
+  image: github-workflow:local
+  user: "${HOST_UID:-1000}:${HOST_GID:-1000}"
+  restart: unless-stopped
+  env_file:
+    - path: .env
+      required: false
+  environment:
+    HOME: ${HOST_HOME:-/home/linuxuser}
+    PATH: ${HOST_HOME:-/home/linuxuser}/.opencode/bin:${HOST_HOME:-/home/linuxuser}/.local/bin:/app/.venv/bin:/usr/local/bin:/usr/bin:/bin
+  depends_on:
+    db:
+      condition: service_healthy
+
 services:
   db:
     image: postgres:16-alpine
@@ -6,7 +33,8 @@ services:
       POSTGRES_PASSWORD: github_workflow
       POSTGRES_DB: github_workflow
     ports:
-      - "55438:5432"
+      # Host-only publish for local tools / one-time restore; containers use db:5432
+      - "127.0.0.1:55438:5432"
     volumes:
       - github_workflow_pg:/var/lib/postgresql/data
     healthcheck:
@@ -14,6 +42,33 @@ services:
       interval: 5s
       timeout: 5s
       retries: 10
+    restart: unless-stopped
+
+  web:
+    <<: *app
+    command: ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8095"]
+    ports:
+      - "127.0.0.1:8095:8095"
+    volumes:
+      - ./config.yaml:/app/config.yaml
+      - ./logs:/app/logs
+
+  worker:
+    <<: *app
+    command: ["python", "-m", "app.tasks.worker"]
+    # v1: exactly one worker — do not scale this service
+    volumes:
+      - ./config.yaml:/app/config.yaml
+      - ./logs:/app/logs
+      # Same absolute paths as the host so DB local_path / WORKTREE_ROOT keep working
+      - ${WORKTREE_ROOT:-/var/lib/github-workflow/worktrees}:${WORKTREE_ROOT:-/var/lib/github-workflow/worktrees}
+      - ${REPOS_ROOT:-/home/linuxuser/repos}:${REPOS_ROOT:-/home/linuxuser/repos}
+      - ${HOST_HOME:-/home/linuxuser}/.opencode:${HOST_HOME:-/home/linuxuser}/.opencode
+      - ${HOST_HOME:-/home/linuxuser}/.config/opencode:${HOST_HOME:-/home/linuxuser}/.config/opencode
+      - ${HOST_HOME:-/home/linuxuser}/.local:${HOST_HOME:-/home/linuxuser}/.local
+      # Optional Claude Code dirs (create empty on host if unused)
+      - ${HOST_HOME:-/home/linuxuser}/.claude:${HOST_HOME:-/home/linuxuser}/.claude
+      - ${HOST_HOME:-/home/linuxuser}/.config/claude:${HOST_HOME:-/home/linuxuser}/.config/claude
 
 volumes:
   github_workflow_pg:

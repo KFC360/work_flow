@@ -12,6 +12,7 @@
 
 ## 系统要点（摘要）
 
+- 生产用 Docker Compose（`db` + `web` + 唯一 `worker`）；`opencode`/`claude` 仍在宿主机并同路径挂进 Worker。切换说明：`deploy/docker/CUTOVER.md`。
 - Web（FastAPI）与唯一 Worker 分进程，经 PostgreSQL 交接。
 - Webhook 验签后入 Inbox 并 202；Worker 同步 GitHub 并跑流水线。
 - 编写文档 / 生成代码在 `WORKTREE_ROOT` 隔离 worktree 中执行，不污染登记的 `local_path`。

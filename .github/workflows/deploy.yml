@@ -1,6 +1,7 @@
-# CD: after a PR is merged into master (push to master), deploy to the production host.
+# CD: after a PR is merged into master (push to master), deploy via Docker Compose.
 # Required repo Secrets: DEPLOY_HOST, DEPLOY_USER, DEPLOY_SSH_KEY, DEPLOY_PATH
 # Optional: DEPLOY_PORT (default 22)
+# Server user must run docker compose without interactive sudo.
 name: deploy
 
 on:
@@ -43,26 +44,17 @@ jobs:
             git fetch origin master
             git checkout master
             git pull --ff-only origin master
-            echo "==> uv sync"
-            if ! command -v uv >/dev/null 2>&1; then
-              echo "ERROR: uv not found in PATH=$PATH"
+            if ! command -v docker >/dev/null 2>&1; then
+              echo "ERROR: docker not found in PATH=$PATH"
               exit 1
             fi
-            uv sync --extra dev
-            if [ -f alembic.ini ]; then
-              echo "==> alembic upgrade head"
-              uv run alembic upgrade head
-            fi
-            if [ -x ./scripts/sync_opencode_skills.sh ]; then
-              echo "==> sync_opencode_skills"
-              ./scripts/sync_opencode_skills.sh || true
-            fi
-            echo "==> supervisorctl restart"
-            if ! sudo -n supervisorctl restart 'github-workflow:*'; then
-              echo "ERROR: sudo supervisorctl failed (need NOPASSWD for supervisorctl)"
+            if ! docker compose version >/dev/null 2>&1; then
+              echo "ERROR: docker compose plugin not found"
               exit 1
             fi
-            sudo -n supervisorctl status 'github-workflow:*'
+            chmod +x ./scripts/docker_deploy.sh
+            echo "==> docker_deploy"
+            ./scripts/docker_deploy.sh
             echo "==> deploy ok $(git rev-parse --short HEAD)"
         env:
           DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}

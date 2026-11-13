@@ -67,8 +67,9 @@ docker compose exec -T db pg_isready -U github_workflow -d github_workflow
 echo "==> alembic upgrade head"
 docker compose run --rm --no-deps web alembic upgrade head
 
-echo "==> docker compose up -d"
-docker compose up -d
+echo "==> docker compose up -d --force-recreate"
+docker compose up -d --force-recreate web worker
+docker compose up -d db
 
 echo "==> healthz"
 for _ in $(seq 1 30); do

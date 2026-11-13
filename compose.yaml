@@ -23,7 +23,7 @@ x-app: &app
     HOME: ${HOST_HOME:-/home/linuxuser}
     HOST_UID: ${HOST_UID:-1000}
     HOST_GID: ${HOST_GID:-1000}
-    PATH: ${HOST_HOME:-/home/linuxuser}/.opencode/bin:${HOST_HOME:-/home/linuxuser}/.local/bin:/app/.venv/bin:/usr/local/bin:/usr/bin:/bin
+    PATH: ${HOST_HOME:-/home/linuxuser}/.opencode/bin:${HOST_HOME:-/home/linuxuser}/.local/bin:/app/.venv/bin:/usr/local/bin:/usr/sbin:/usr/bin:/bin
   depends_on:
     db:
       condition: service_healthy

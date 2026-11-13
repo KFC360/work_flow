@@ -24,7 +24,9 @@ COPY pyproject.toml uv.lock README.md ./
 COPY app ./app
 COPY main.py alembic.ini ./
 COPY docker-entrypoint.sh /docker-entrypoint.sh
-RUN chmod +x /docker-entrypoint.sh
+RUN chmod +x /docker-entrypoint.sh \
+    && echo "gw:x:1000:" >> /etc/group \
+    && echo "gw:x:1000:1000:github-workflow:/home/linuxuser:/bin/bash" >> /etc/passwd
 
 RUN uv sync --frozen --no-dev
 

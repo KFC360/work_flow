@@ -52,6 +52,9 @@ services:
     volumes:
       - ./config.yaml:/app/config.yaml
       - ./logs:/app/logs
+      # Repo page validates local_path inside web; same host paths as worker
+      - ${WORKTREE_ROOT:-/var/lib/github-workflow/worktrees}:${WORKTREE_ROOT:-/var/lib/github-workflow/worktrees}
+      - ${REPOS_ROOT:-/home/linuxuser/repos}:${REPOS_ROOT:-/home/linuxuser/repos}
 
   worker:
     <<: *app

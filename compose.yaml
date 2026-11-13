@@ -24,6 +24,7 @@ x-app: &app
     HOME: ${HOST_HOME:-/home/linuxuser}
     HOST_UID: ${HOST_UID:-1000}
     HOST_GID: ${HOST_GID:-1000}
+    XDG_CACHE_HOME: ${HOST_HOME:-/home/linuxuser}/.cache
     PATH: ${HOST_HOME:-/home/linuxuser}/.opencode/bin:${HOST_HOME:-/home/linuxuser}/.local/bin:/app/.venv/bin:/usr/local/bin:/usr/sbin:/usr/bin:/bin
   depends_on:
     db:
@@ -73,6 +74,8 @@ services:
       - ${HOST_HOME:-/home/linuxuser}/.opencode:${HOST_HOME:-/home/linuxuser}/.opencode
       - ${HOST_HOME:-/home/linuxuser}/.config/opencode:${HOST_HOME:-/home/linuxuser}/.config/opencode
       - ${HOST_HOME:-/home/linuxuser}/.local:${HOST_HOME:-/home/linuxuser}/.local
+      # OpenCode / Node cache (HOME parent is not a full home mount)
+      - ${HOST_HOME:-/home/linuxuser}/.cache:${HOST_HOME:-/home/linuxuser}/.cache
       # SSH remotes (git@github.com:...) need host keys + known_hosts inside the worker
       - ${HOST_HOME:-/home/linuxuser}/.ssh:${HOST_HOME:-/home/linuxuser}/.ssh
       # Optional Claude Code dirs (create empty on host if unused)

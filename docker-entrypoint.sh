@@ -17,7 +17,9 @@ ensure_identity() {
   if ! getent passwd "$UID_NUM" >/dev/null 2>&1; then
     echo "${NAME}:x:${UID_NUM}:${GID_NUM}:github-workflow:${HOME_DIR}:/bin/bash" >> /etc/passwd
   fi
+  # Parent of bind mounts is often root-owned; agent CLIs mkdir ~/.cache under HOME.
   mkdir -p "$HOME_DIR"
+  chown "${UID_NUM}:${GID_NUM}" "$HOME_DIR"
   if ! getent passwd "$UID_NUM" >/dev/null 2>&1; then
     echo "docker-entrypoint: passwd still missing uid ${UID_NUM} after write" >&2
     exit 1

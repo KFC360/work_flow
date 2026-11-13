@@ -59,7 +59,7 @@
 {% if form_disabled %}
 <div class="alert alert-info mb-4 flex items-start gap-2 text-sm" role="status">
   {{ icon('info', 'h-5 w-5 shrink-0') }}
-  <span>有进行中的任务，暂不可改路径。</span>
+  <span>有进行中的任务，暂不可改路径或收件人。</span>
 </div>
 {% endif %}
 
@@ -109,21 +109,67 @@
           <p id="doc_dir-error" class="mt-1 min-w-0 max-w-full break-words text-sm text-error">{{ field_errors.doc_dir }}</p>
           {% endif %}
 
-          <label class="label" for="notify_emails">新 Issue 收件人</label>
-          <textarea
-            id="notify_emails"
-            name="notify_emails"
-            rows="3"
-            class="textarea w-full min-w-0 max-w-full font-mono text-sm {% if field_errors.notify_emails %}textarea-error{% endif %}"
-            aria-describedby="notify_emails-help{% if field_errors.notify_emails %} notify_emails-error{% endif %}"
-            {% if field_errors.notify_emails %}aria-invalid="true"{% endif %}
-            {% if form_disabled %}disabled{% endif %}
-            {% if first_error == 'notify_emails' %}autofocus{% endif %}
-          >{{ notify_emails }}</textarea>
-          <p id="notify_emails-help" class="mt-1 w-full min-w-0 max-w-full whitespace-normal break-words text-xs leading-5 text-base-content/60">多个邮箱用换行或逗号分隔。Issue 首次同步进本系统时通知一次；留空则不发信。全量同步历史 Issue 前请先留空，避免群发。</p>
-          {% if field_errors.notify_emails %}
-          <p id="notify_emails-error" class="mt-1 min-w-0 max-w-full break-words text-sm text-error">{{ field_errors.notify_emails }}</p>
-          {% endif %}
+          <p id="notify-emails-label" class="label">新 Issue 收件人</p>
+          <div class="w-full min-w-0 max-w-full"{% if notify_enhance %} data-gw-notify{% endif %}>
+            <ul
+              data-gw-notify-list
+              aria-labelledby="notify-emails-label"
+              class="w-full min-w-0 max-w-full divide-y divide-base-300 rounded-box border border-base-300{% if not notify_email_items %} hidden{% endif %}"
+            >
+              {% for email in notify_email_items %}
+              <li data-gw-notify-row class="flex min-w-0 items-center gap-2 px-3 py-2">
+                <span class="min-w-0 flex-1 break-all font-mono text-sm">{{ email }}</span>
+                <button
+                  type="button"
+                  class="btn btn-ghost btn-xs shrink-0"
+                  data-gw-notify-remove
+                  aria-label="删除收件人 {{ email }}"
+                  {% if form_disabled %}disabled{% endif %}
+                  hidden
+                >删除</button>
+              </li>
+              {% endfor %}
+            </ul>
+            <p data-gw-notify-empty class="mt-1 w-full min-w-0 max-w-full whitespace-normal break-words text-xs leading-5 text-base-content/60{% if notify_email_items %} hidden{% endif %}">暂无收件人<span class="block">保存空列表后，新 Issue 不会发通知。</span></p>
+            <div data-gw-notify-add class="mt-2 w-full min-w-0 max-w-full" hidden>
+              <label class="sr-only" for="gw-notify-email">添加收件人邮箱</label>
+              <div class="join w-full min-w-0">
+                <input
+                  id="gw-notify-email"
+                  type="email"
+                  autocomplete="email"
+                  class="input input-sm join-item w-full min-w-0 font-mono text-sm"
+                  data-gw-notify-input
+                  placeholder="name@example.com"
+                  aria-describedby="notify_emails-help"
+                  {% if form_disabled %}disabled{% endif %}
+                />
+                <button type="button" class="btn btn-outline btn-sm join-item" data-gw-notify-add-btn {% if form_disabled %}disabled{% endif %}>添加</button>
+              </div>
+              <p data-gw-notify-error class="mt-1 min-w-0 max-w-full break-words text-sm text-error" role="alert" aria-live="polite" hidden></p>
+            </div>
+            <p id="notify_emails-help" class="mt-1 w-full min-w-0 max-w-full whitespace-normal break-words text-xs leading-5 text-base-content/60">一次添加一个邮箱，保存后生效；留空则不发信。全量同步历史 Issue 前请先留空，避免群发。</p>
+            <noscript>
+            <p class="mt-1 w-full min-w-0 max-w-full whitespace-normal break-words text-xs leading-5 text-base-content/60">JavaScript 未启用时可在下方文本框直接编辑，每行一个邮箱。</p>
+            </noscript>
+            <div data-gw-notify-fallback class="mt-2 w-full min-w-0 max-w-full">
+              <label class="label" for="notify_emails">邮箱列表（每行一个）</label>
+              <textarea
+                id="notify_emails"
+                name="notify_emails"
+                rows="3"
+                class="textarea w-full min-w-0 max-w-full font-mono text-sm {% if field_errors.notify_emails %}textarea-error{% endif %}"
+                data-gw-notify-source
+                aria-describedby="notify_emails-help{% if field_errors.notify_emails %} notify_emails-error{% endif %}"
+                {% if field_errors.notify_emails %}aria-invalid="true"{% endif %}
+                {% if form_disabled %}disabled{% endif %}
+                {% if first_error == 'notify_emails' %}autofocus{% endif %}
+              >{{ notify_emails }}</textarea>
+              {% if field_errors.notify_emails %}
+              <p id="notify_emails-error" class="mt-1 min-w-0 max-w-full break-words text-sm text-error">{{ field_errors.notify_emails }}</p>
+              {% endif %}
+            </div>
+          </div>
         </fieldset>
         <button type="submit" class="btn btn-primary btn-sm gap-1.5" data-gw-submit {% if form_disabled %}disabled{% endif %}>
           {{ icon('check') }}<span>保存</span>
@@ -364,4 +410,143 @@
     </div>
   </section>
 </div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  (function () {
+    var root = document.querySelector('[data-gw-notify]');
+    if (!root) return;
+    var form = root.closest('form');
+    var source = root.querySelector('[data-gw-notify-source]');
+    var list = root.querySelector('[data-gw-notify-list]');
+    var empty = root.querySelector('[data-gw-notify-empty]');
+    var fallback = root.querySelector('[data-gw-notify-fallback]');
+    var addArea = root.querySelector('[data-gw-notify-add]');
+    var input = root.querySelector('[data-gw-notify-input]');
+    var addButton = root.querySelector('[data-gw-notify-add-btn]');
+    var errorBox = root.querySelector('[data-gw-notify-error]');
+    if (!source || !list || !empty || !input || !addButton) return;
+
+    var disabled = source.disabled;
+    var emails = [];
+
+    function sync() {
+      source.value = emails.join('\n');
+    }
+
+    function clearError() {
+      if (!errorBox) return;
+      errorBox.textContent = '';
+      errorBox.hidden = true;
+    }
+
+    function showError(message) {
+      if (!errorBox) return;
+      errorBox.textContent = message;
+      errorBox.hidden = false;
+    }
+
+    function isValidEmail(value) {
+      if (!value || /[\s<>]/.test(value)) return false;
+      var parts = value.split('@');
+      return parts.length === 2 && parts[0].length > 0 && parts[1].length > 0;
+    }
+
+    function removeAt(index) {
+      emails.splice(index, 1);
+      render();
+      var buttons = list.querySelectorAll('[data-gw-notify-remove]');
+      if (buttons.length) {
+        buttons[index < buttons.length ? index : buttons.length - 1].focus();
+      } else {
+        input.focus();
+      }
+    }
+
+    function render() {
+      list.innerHTML = '';
+      for (var i = 0; i < emails.length; i += 1) {
+        var row = document.createElement('li');
+        row.className = 'flex min-w-0 items-center gap-2 px-3 py-2';
+        row.setAttribute('data-gw-notify-row', '');
+        var text = document.createElement('span');
+        text.className = 'min-w-0 flex-1 break-all font-mono text-sm';
+        text.textContent = emails[i];
+        row.appendChild(text);
+        if (!disabled) {
+          var remove = document.createElement('button');
+          remove.type = 'button';
+          remove.className = 'btn btn-ghost btn-xs shrink-0';
+          remove.setAttribute('data-gw-notify-remove', '');
+          remove.setAttribute('aria-label', '删除收件人 ' + emails[i]);
+          remove.textContent = '删除';
+          remove.addEventListener('click', (function (index) {
+            return function () {
+              removeAt(index);
+            };
+          })(i));
+          row.appendChild(remove);
+        }
+        list.appendChild(row);
+      }
+      list.hidden = emails.length === 0;
+      empty.hidden = emails.length > 0;
+      sync();
+    }
+
+    function addEmail() {
+      var value = (input.value || '').trim();
+      if (!value) {
+        showError('请输入邮箱');
+        input.focus();
+        return;
+      }
+      if (!isValidEmail(value)) {
+        showError('非法邮箱：' + value);
+        input.focus();
+        return;
+      }
+      var lower = value.toLowerCase();
+      for (var i = 0; i < emails.length; i += 1) {
+        if (emails[i].toLowerCase() === lower) {
+          showError('重复邮箱：' + value);
+          input.focus();
+          return;
+        }
+      }
+      emails.push(value);
+      render();
+      input.value = '';
+      clearError();
+      input.focus();
+    }
+
+    var parts = (source.value || '').split(/[\s,;]+/);
+    for (var i = 0; i < parts.length; i += 1) {
+      var part = parts[i].trim();
+      if (part) emails.push(part);
+    }
+
+    render();
+    if (fallback) fallback.hidden = true;
+    if (addArea) addArea.hidden = false;
+
+    if (disabled) return;
+
+    addButton.addEventListener('click', addEmail);
+    input.addEventListener('keydown', function (event) {
+      if (event.key === 'Enter') {
+        event.preventDefault();
+        addEmail();
+      }
+    });
+    input.addEventListener('input', clearError);
+    if (form) {
+      form.addEventListener('submit', function () {
+        sync();
+      });
+    }
+  })();
+</script>
 {% endblock %}

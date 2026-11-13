@@ -18,7 +18,11 @@ _SPLIT_RE = re.compile(r"[\s,;]+")
 
 
 def parse_notify_emails(raw: str) -> tuple[list[str], str | None]:
-    """Split comma/newline/semicolon separated emails. Return (emails, error)."""
+    """Split comma/newline/semicolon separated emails. Return (emails, error).
+
+    Duplicate addresses (case-insensitive) are an error rather than silently
+    skipped, so the repo form can point at the repeated value.
+    """
     if raw is None:
         return [], None
     text = str(raw).strip()
@@ -36,7 +40,7 @@ def parse_notify_emails(raw: str) -> tuple[list[str], str | None]:
         address = address.strip()
         key = address.lower()
         if key in seen:
-            continue
+            return [], f"重复邮箱：{address}"
         seen.add(key)
         emails.append(address)
     return emails, None

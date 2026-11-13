@@ -68,10 +68,21 @@ def _seed_repo(db: Session, *, emails: list[str] | None = None):
     return repo
 
 
-def test_parse_notify_emails_dedupes_and_splits() -> None:
-    emails, err = parse_notify_emails("a@example.com, b@example.com\na@example.com")
+def test_parse_notify_emails_splits_and_keeps_case() -> None:
+    emails, err = parse_notify_emails("A@example.com, b@example.com\nc@example.com")
     assert err is None
-    assert emails == ["a@example.com", "b@example.com"]
+    assert emails == ["A@example.com", "b@example.com", "c@example.com"]
+
+
+def test_parse_notify_emails_rejects_duplicate() -> None:
+    emails, err = parse_notify_emails("a@example.com, b@example.com\nA@Example.com")
+    assert emails == []
+    assert err == "重复邮箱：A@Example.com"
+
+
+def test_parse_notify_emails_empty_is_allowed() -> None:
+    assert parse_notify_emails("") == ([], None)
+    assert parse_notify_emails(" , ;\n") == ([], None)
 
 
 def test_parse_notify_emails_rejects_invalid() -> None:
@@ -108,6 +119,20 @@ def test_repo_save_notify_emails(client: TestClient, db: Session) -> None:
     )
     assert resp.status_code == 200
     assert "非法邮箱" in resp.text
+    db.refresh(repo)
+    assert repo.notify_emails == ["a@example.com", "b@example.com"]
+
+    resp = client.post(
+        f"/repos/{repo.id}",
+        data={
+            "csrf_token": csrf,
+            "local_path": "",
+            "doc_dir": "docs",
+            "notify_emails": "a@example.com\nA@EXAMPLE.COM",
+        },
+    )
+    assert resp.status_code == 200
+    assert "重复邮箱" in resp.text
     db.refresh(repo)
     assert repo.notify_emails == ["a@example.com", "b@example.com"]
 

@@ -161,7 +161,7 @@ CD 需在仓库 **Settings → Secrets and variables → Actions**（Repository 
 
 1. `.env` 配置 `APP_ADMIN_USER` / `APP_ADMIN_PASSWORD`、`SMTP_PASSWORD`，以及 `SMOKE_NOTIFY_TO`（多个邮箱用逗号/分号/空白分隔；留空则只测登录不发信）
 2. 可选 `SMOKE_BASE_URL`（默认 `https://api.kfc360.xyz`）
-3. 首次在部署用户下安装浏览器：`uv sync --extra smoke && uv run playwright install chromium`（之后 CD 脚本也会尽量自检安装）
+3. 冒烟在官方 Playwright 镜像里跑（`mcr.microsoft.com/playwright:v1.65.1-jammy` + `--network host`），**不**在宿主机装 Chromium 系统库；需能 `docker pull` / `docker run`
 4. 登录失败或邮件发送失败会使 CD job 失败；失败截图在 `logs/smoke/`
 
 ## 目录

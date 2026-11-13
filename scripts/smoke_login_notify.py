@@ -1,9 +1,12 @@
 #!/usr/bin/env python3
 """Post-deploy smoke: Playwright login + email result via app.services.mail.
 
-Run on the deploy host (after docker_deploy), with project .env loaded:
+Prefer ./scripts/smoke_login_notify.sh (runs inside Playwright Docker image).
+
+Manual (host must have Chromium OS libs):
 
   uv sync --extra smoke
+  uv run playwright install-deps chromium   # needs root/sudo
   uv run playwright install chromium
   uv run --extra smoke python scripts/smoke_login_notify.py
 

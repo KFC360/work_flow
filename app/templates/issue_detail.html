@@ -177,6 +177,47 @@
       </div>
     </section>
 
+    <section class="card card-border bg-base-100 shadow-sm" aria-labelledby="issue-messages-title" data-gw-issue-messages>
+      <div class="card-body p-5">
+        <h2 id="issue-messages-title" class="card-title text-base">讨论与动态</h2>
+        {% if issue_messages %}
+        <ol class="mt-2 space-y-4">
+          {% for item in issue_messages %}
+          <li class="border-t border-base-200 pt-4 first:border-t-0 first:pt-0" data-gw-message-id="{{ item.row.id }}">
+            <div class="flex flex-wrap items-baseline justify-between gap-2 text-xs text-base-content/60">
+              <p>
+                {% if item.row.author_login %}@{{ item.row.author_login }}{% else %}系统{% endif %}
+                {% if item.is_comment %}
+                  · 评论
+                  {% if item.is_deleted %}<span class="badge badge-ghost badge-xs ml-1">已删除</span>{% endif %}
+                {% else %}
+                  · 动态
+                {% endif %}
+              </p>
+              {% if item.row.occurred_at %}
+              <time datetime="{{ item.row.occurred_at.isoformat() }}">{{ item.row.occurred_at | gw_time }} UTC</time>
+              {% endif %}
+            </div>
+            {% if item.is_comment %}
+              {% if item.is_deleted %}
+              <p class="mt-2 text-sm italic text-base-content/50">该评论已删除。</p>
+              {% elif item.body_html is not none %}
+              <div class="md-content mt-2">{{ item.body_html }}</div>
+              {% else %}
+              <pre class="mt-2 whitespace-pre-wrap break-words font-sans text-sm leading-6 text-base-content">{{ item.row.body }}</pre>
+              {% endif %}
+            {% else %}
+              <p class="mt-2 text-sm text-base-content">{{ item.row.body }}</p>
+            {% endif %}
+          </li>
+          {% endfor %}
+        </ol>
+        {% else %}
+        <p class="mt-1 text-sm text-base-content/60">暂无评论或动态。同步 Issues 或配置 Webhook 的 issue_comment 后会出现在这里。</p>
+        {% endif %}
+      </div>
+    </section>
+
     {% if has_design_doc %}
     <section id="design-doc" class="card card-border bg-base-100 shadow-sm" aria-labelledby="design-doc-title">
       <div class="card-body p-5">

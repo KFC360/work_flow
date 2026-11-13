@@ -139,6 +139,9 @@ class FakeSyncClient:
             raise value
         return value or {}
 
+    def list_issue_comments(self, owner, repo, number, **kwargs):
+        return []
+
     def close(self):
         self.closed = True
 

@@ -93,6 +93,21 @@ class GitHubClient:
     def get_pull_request(self, owner: str, repo: str, number: int) -> dict[str, Any]:
         return self._request("GET", f"/repos/{owner}/{repo}/pulls/{number}")
 
+    def list_issue_comments(
+        self,
+        owner: str,
+        repo: str,
+        number: int,
+        *,
+        page: int = 1,
+        per_page: int = 100,
+    ) -> list[dict[str, Any]]:
+        return self._request(
+            "GET",
+            f"/repos/{owner}/{repo}/issues/{number}/comments",
+            params={"per_page": per_page, "page": page},
+        )
+
     def create_pull_request(
         self,
         owner: str,

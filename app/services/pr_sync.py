@@ -178,6 +178,7 @@ def apply_pull_request_event(db: Session, payload: dict[str, Any]) -> tuple[bool
         # Late event: accept the delivery but do not roll the state backwards.
         return True, None
 
+    prev_state = issue.pr_state
     issue.pr_state = state
     issue.pr_merged_at = merged_at
     if incoming_time is not None:
@@ -185,5 +186,19 @@ def apply_pull_request_event(db: Session, payload: dict[str, Any]) -> tuple[bool
     pr_url = pr.get("html_url")
     if isinstance(pr_url, str) and pr_url.strip():
         issue.pr_url = pr_url.strip()
+    if state in {"merged", "closed"} and state != prev_state:
+        from app.services.issue_messages import record_pr_state_event
+
+        sender = payload.get("sender") or {}
+        actor = sender.get("login") if isinstance(sender, dict) else ""
+        record_pr_state_event(
+            db,
+            issue,
+            pr_number=number,
+            pr_state=state,
+            actor_login=actor if isinstance(actor, str) else "",
+            occurred_at=incoming_time,
+            commit=False,
+        )
     db.flush()
     return True, None

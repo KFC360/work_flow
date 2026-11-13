@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 from app.crud import webhook_delivery as delivery_crud
 from app.services.github_api import GitHubAPIError, GitHubClient
 from app.services.ingest import process_issue_delivery, process_pull_request_delivery
+from app.services.issue_messages import process_issue_comment_delivery
 
 
 def _backoff_seconds(attempts: int, retry_after: int | None = None) -> int:
@@ -38,6 +39,11 @@ def process_one_delivery(db: Session, client: GitHubClient | None = None) -> boo
             handled, reason = process_pull_request_delivery(db, row.payload)
             if not handled:
                 delivery_crud.mark_ignored(db, row, error=reason or "pull_request ignored")
+                return True
+        elif row.event == "issue_comment":
+            handled, reason = process_issue_comment_delivery(db, row.payload)
+            if not handled:
+                delivery_crud.mark_ignored(db, row, error=reason or "issue_comment ignored")
                 return True
         else:
             delivery_crud.mark_ignored(db, row, error=f"unsupported event {row.event}")

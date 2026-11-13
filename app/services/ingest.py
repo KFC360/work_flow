@@ -10,6 +10,7 @@ from app.crud import issue as issue_crud
 from app.crud import job as job_crud
 from app.crud import repository as repository_crud
 from app.services.github_api import GitHubAPIError, GitHubClient
+from app.services.issue_messages import record_issue_action_event, sync_issue_comments_safe
 from app.services.issue_notify import maybe_notify_new_issue
 from app.services.pr_sync import apply_pull_request_event
 
@@ -199,6 +200,23 @@ def apply_issue_action(db: Session, repo_id: int, payload: dict[str, Any]) -> bo
     repo = repository_crud.get(db, repo_id)
     if repo is not None:
         maybe_notify_new_issue(db, repo, row, created=created)
+
+    actor = payload.get("sender") or {}
+    actor_login = actor.get("login") if isinstance(actor, dict) else ""
+    if not isinstance(actor_login, str):
+        actor_login = ""
+    extra = ""
+    if action == "typed":
+        extra = issue_type_name(issue.get("type")) or ""
+    record_issue_action_event(
+        db,
+        row,
+        action=action,
+        actor_login=actor_login or (user.get("login") or ""),
+        extra=extra,
+        occurred_at=_parse_dt(issue.get("updated_at")),
+        commit=False,
+    )
     return True
 
 
@@ -241,6 +259,7 @@ def refresh_issue_from_github(
         github_issue_type=issue_type_name(payload.get("type")),
         github_issue_type_set=("type" in payload),
     )
+    sync_issue_comments_safe(db, client, repo, row, commit=False)
     return row
 
 

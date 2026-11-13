@@ -14,6 +14,7 @@ from app.models.issue import Issue
 from app.models.repository import Repository
 from app.services.github_api import GitHubAPIError
 from app.services.ingest import issue_type_name, label_names_from_payload
+from app.services.issue_messages import sync_issue_comments_safe
 from app.services.issue_notify import maybe_notify_new_issue
 from app.services.pr_sync import apply_pull_request_snapshot, parse_dt
 
@@ -37,6 +38,7 @@ class IssueSyncResult:
     skipped_deleted: int = 0
     skipped_recent: int = 0
     pr_refreshed: int = 0
+    comments_synced: int = 0
     failures: list[str] = field(default_factory=list)
 
 
@@ -115,6 +117,7 @@ def _read_remote_issues(
 
 def _write_remote_issue(
     db: Session,
+    client,
     repo: Repository,
     item: dict[str, Any],
     local: Issue | None,
@@ -160,6 +163,9 @@ def _write_remote_issue(
     # Flush first so issue.id is available; outer sync commits once at the end.
     db.flush()
     maybe_notify_new_issue(db, repo, row, created=created, commit=False)
+    result.comments_synced += sync_issue_comments_safe(
+        db, client, repo, row, commit=False
+    )
 
 
 def _soft_delete_missing(
@@ -250,7 +256,7 @@ def sync_repository_issues(
         number = _valid_int(item.get("number"))
         if number is None:
             continue
-        _write_remote_issue(db, repo, item, by_number.get(number), result)
+        _write_remote_issue(db, client, repo, item, by_number.get(number), result)
 
     _soft_delete_missing(db, local_rows, seen, started_at, result)
     _refresh_pull_requests(client, repo, local_rows, result, deadline)
@@ -263,7 +269,8 @@ def summary_text(result: IssueSyncResult) -> str:
     counts = (
         f"检查 {result.checked} 条（open {result.open_count} / closed "
         f"{result.closed_count}），新增 {result.created} 条，更新 {result.updated} 条，"
-        f"软删 {result.soft_deleted} 条，PR 刷新 {result.pr_refreshed} 条。"
+        f"软删 {result.soft_deleted} 条，PR 刷新 {result.pr_refreshed} 条，"
+        f"评论写入 {result.comments_synced} 条。"
     )
     if result.skipped_recent:
         counts += f"跳过同步期间更新 {result.skipped_recent} 条。"

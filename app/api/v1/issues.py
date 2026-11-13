@@ -14,6 +14,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from app.core.security import csrf_token_for_jti
+from app.core.settings import get_settings
 from app.core.templating import build_templates
 from app.crud import company as company_crud
 from app.crud import design_feedback as feedback_crud
@@ -421,6 +422,9 @@ def _render_issue_detail(
     review_context = _design_review_context(db, issue, repo)
     design_edit_block = design_review.design_edit_block_reason(db, issue)
     design_edit_available = bool(has_design_doc and design_edit_block is None)
+    from app.services.issue_messages import messages_for_detail
+
+    issue_messages = messages_for_detail(db, issue.id)
     return templates.TemplateResponse(
         request,
         "issue_detail.html",
@@ -431,6 +435,7 @@ def _render_issue_detail(
             company=company,
             issue_body_html=issue_body_html,
             issue_has_body=issue_has_body,
+            issue_messages=issue_messages,
             design_doc_html=design_doc_html,
             has_design_doc=has_design_doc,
             design_edit_available=design_edit_available,
@@ -493,6 +498,20 @@ def issue_detail(
             return _design_redirect(issue.id, "error", block)
         if not (issue.design_doc_path and (issue.design_doc_text or "").strip()):
             return _design_redirect(issue.id, "error", "设计文档不存在或为空")
+    # Best-effort comment backfill when opening the page; never block render.
+    if get_settings().github_token:
+        try:
+            from app.services.github_api import GitHubClient
+            from app.services.issue_messages import sync_issue_comments_safe
+
+            client = GitHubClient()
+            try:
+                sync_issue_comments_safe(db, client, repo, issue, commit=True)
+            finally:
+                client.close()
+        except Exception:  # noqa: BLE001
+            pass
+
     return _render_issue_detail(
         request,
         db,

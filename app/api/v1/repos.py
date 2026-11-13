@@ -27,6 +27,7 @@ from app.services.git_repo import (
 )
 from app.services.github_api import GitHubAPIError, GitHubClient
 from app.services.ingest import sync_owner_and_repo
+from app.services.issue_notify import format_notify_emails, parse_notify_emails
 
 router = APIRouter(tags=["repos"])
 templates = build_templates()
@@ -83,6 +84,7 @@ def _repo_page_context(
     *,
     local_path: str | None = None,
     doc_dir: str | None = None,
+    notify_emails: str | None = None,
     field_errors: dict[str, str] | None = None,
     form_disabled: bool | None = None,
     flash: str | None = None,
@@ -94,6 +96,8 @@ def _repo_page_context(
         local_path = repo.local_path or ""
     if doc_dir is None:
         doc_dir = repo.doc_dir or "docs"
+    if notify_emails is None:
+        notify_emails = format_notify_emails(repo.notify_emails)
     if form_disabled is None:
         form_disabled = job_crud.has_active_for_repo(db, repo.id)
     return _ctx(
@@ -102,6 +106,7 @@ def _repo_page_context(
         company=company,
         local_path=local_path,
         doc_dir=doc_dir,
+        notify_emails=notify_emails,
         field_errors=field_errors or {},
         form_disabled=form_disabled,
         origin=origin,
@@ -152,6 +157,7 @@ def repo_save(
     user: Annotated[User, Depends(require_csrf)],
     local_path: Annotated[str, Form()] = "",
     doc_dir: Annotated[str, Form()] = "docs",
+    notify_emails: Annotated[str, Form()] = "",
 ):
     repo = repository_crud.get(db, repo_id)
     if repo is None:
@@ -164,6 +170,10 @@ def repo_save(
     errors: dict[str, str] = {}
     local_path = local_path.strip()
     doc_dir = (doc_dir or "docs").strip()
+    notify_emails_raw = notify_emails or ""
+    parsed_emails, email_error = parse_notify_emails(notify_emails_raw)
+    if email_error:
+        errors["notify_emails"] = email_error
     if local_path:
         try:
             validate_local_path(local_path, repo.github_full_name)
@@ -191,6 +201,7 @@ def repo_save(
                 repo,
                 local_path=local_path,
                 doc_dir=doc_dir,
+                notify_emails=notify_emails_raw,
                 field_errors=errors,
                 form_disabled=False,
             ),
@@ -199,6 +210,7 @@ def repo_save(
 
     repo.local_path = local_path or None
     repo.doc_dir = doc_dir or "docs"
+    repo.notify_emails = parsed_emails
     db.commit()
     return RedirectResponse(f"/repos/{repo_id}?flash=ok&msg={quote('已保存')}", status_code=303)
 

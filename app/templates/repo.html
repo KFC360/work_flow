@@ -63,7 +63,7 @@
 </div>
 {% endif %}
 
-{% set first_error = 'local_path' if field_errors.local_path else ('doc_dir' if field_errors.doc_dir else '') %}
+{% set first_error = 'local_path' if field_errors.local_path else ('doc_dir' if field_errors.doc_dir else ('notify_emails' if field_errors.notify_emails else '')) %}
 <div class="grid min-w-0 gap-6 lg:grid-cols-3">
   <section class="card card-border order-1 min-w-0 max-w-full bg-base-100 shadow-sm lg:order-2 lg:col-span-1" aria-labelledby="local-config-title">
     <div class="card-body min-w-0 max-w-full p-5">
@@ -107,6 +107,22 @@
           <p id="doc_dir-help" class="mt-1 w-full min-w-0 max-w-full whitespace-normal break-words text-xs leading-5 text-base-content/60">相对路径，默认 <code class="break-all whitespace-normal rounded bg-base-200 px-1 py-0.5 font-mono">docs</code>；基石入口为 <code class="break-all whitespace-normal rounded bg-base-200 px-1 py-0.5 font-mono">{doc_dir}/README.md</code>。</p>
           {% if field_errors.doc_dir %}
           <p id="doc_dir-error" class="mt-1 min-w-0 max-w-full break-words text-sm text-error">{{ field_errors.doc_dir }}</p>
+          {% endif %}
+
+          <label class="label" for="notify_emails">新 Issue 收件人</label>
+          <textarea
+            id="notify_emails"
+            name="notify_emails"
+            rows="3"
+            class="textarea w-full min-w-0 max-w-full font-mono text-sm {% if field_errors.notify_emails %}textarea-error{% endif %}"
+            aria-describedby="notify_emails-help{% if field_errors.notify_emails %} notify_emails-error{% endif %}"
+            {% if field_errors.notify_emails %}aria-invalid="true"{% endif %}
+            {% if form_disabled %}disabled{% endif %}
+            {% if first_error == 'notify_emails' %}autofocus{% endif %}
+          >{{ notify_emails }}</textarea>
+          <p id="notify_emails-help" class="mt-1 w-full min-w-0 max-w-full whitespace-normal break-words text-xs leading-5 text-base-content/60">多个邮箱用换行或逗号分隔。Issue 首次同步进本系统时通知一次；留空则不发信。全量同步历史 Issue 前请先留空，避免群发。</p>
+          {% if field_errors.notify_emails %}
+          <p id="notify_emails-error" class="mt-1 min-w-0 max-w-full break-words text-sm text-error">{{ field_errors.notify_emails }}</p>
           {% endif %}
         </fieldset>
         <button type="submit" class="btn btn-primary btn-sm gap-1.5" data-gw-submit {% if form_disabled %}disabled{% endif %}>

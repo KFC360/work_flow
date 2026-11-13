@@ -65,7 +65,7 @@ def _seed(
         repo.local_path = str(local_path)
     repo.doc_dir = "docs"
     db.commit()
-    issue = issue_crud.upsert_from_webhook(
+    issue, _ = issue_crud.upsert_from_webhook(
         db,
         repository_id=repo.id,
         github_issue_id=9000 + number + number_offset,
@@ -722,7 +722,7 @@ def test_issue_metadata_update_keeps_approval(db: Session) -> None:
         label_names=["功能迭代"],
         github_updated_at=datetime(2026, 11, 13, 8, 0, tzinfo=timezone.utc),
         action="edited",
-    )
+    )  # return value unused; asserts below refresh from DB
     db.refresh(issue)
     assert issue.title == "更新后的标题"
     assert issue.doc_approved_at == approved_at

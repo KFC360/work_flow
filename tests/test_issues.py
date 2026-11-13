@@ -40,7 +40,7 @@ def _seed_issue(db: Session, *, status: str = "pending_classify", kind: str = "p
         default_branch="main",
         private=False,
     )
-    issue = issue_crud.upsert_from_webhook(
+    issue, _ = issue_crud.upsert_from_webhook(
         db,
         repository_id=repo.id,
         github_issue_id=999,
@@ -132,7 +132,7 @@ def _summary_repo(db: Session, *, gh_id: int = 77):
 
 
 def _summary_issue(db: Session, repo, *, number: int, kind: str, status: str, state: str = "open"):
-    issue = issue_crud.upsert_from_webhook(
+    issue, _ = issue_crud.upsert_from_webhook(
         db,
         repository_id=repo.id,
         github_issue_id=7000 + number,

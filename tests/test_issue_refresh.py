@@ -47,7 +47,7 @@ def _seed(db: Session, *, status: str = "recorded", kind: str = "feature"):
         default_branch="main",
         private=False,
     )
-    issue = issue_crud.upsert_from_webhook(
+    issue, _ = issue_crud.upsert_from_webhook(
         db,
         repository_id=repo.id,
         github_issue_id=999,

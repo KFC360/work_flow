@@ -224,7 +224,7 @@ def _seed_repo(db: Session, *, gh_id: int = 10, full_name: str = "acme/demo", **
 
 
 def _seed_issue(db: Session, repo, *, number: int, kind: str, status: str, state: str = "open"):
-    issue = issue_crud.upsert_from_webhook(
+    issue, _ = issue_crud.upsert_from_webhook(
         db,
         repository_id=repo.id,
         github_issue_id=9000 + number,

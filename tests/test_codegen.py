@@ -47,7 +47,7 @@ def _seed_feature_ready(db: Session, clone: Path, *, number: int = 7):
     repo.local_path = str(clone)
     repo.doc_dir = "docs"
     db.commit()
-    issue = issue_crud.upsert_from_webhook(
+    issue, _ = issue_crud.upsert_from_webhook(
         db,
         repository_id=repo.id,
         github_issue_id=3000 + number,

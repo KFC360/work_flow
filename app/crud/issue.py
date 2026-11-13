@@ -100,13 +100,13 @@ STATE_ACTIONS = {
 EARLY_STATUSES = {"pending_classify", "recorded", "support_open"}
 
 
-def _finish(db: Session, row: Issue, *, commit: bool) -> Issue:
+def _finish(db: Session, row: Issue, *, commit: bool, created: bool) -> tuple[Issue, bool]:
     if commit:
         db.commit()
         db.refresh(row)
     else:
         db.flush()
-    return row
+    return row, created
 
 
 def upsert_from_webhook(
@@ -126,12 +126,14 @@ def upsert_from_webhook(
     github_issue_type: str | None = None,
     github_issue_type_set: bool = False,
     commit: bool = True,
-) -> Issue:
+) -> tuple[Issue, bool]:
+    """Insert or update an Issue. Second return value is True when a new row was added."""
     row = get_by_repo_number(db, repository_id, number)
     kind, status = classify_labels(label_names)
     event_time = _aware(github_updated_at)
 
     if action == "deleted":
+        created = False
         if row is None:
             row = Issue(
                 repository_id=repository_id,
@@ -150,12 +152,13 @@ def upsert_from_webhook(
                 deleted_at=event_time or datetime.now(timezone.utc),
             )
             db.add(row)
+            created = True
         elif row.deleted_at is None and _event_wins(row.github_state_updated_at, event_time):
             # deleted_at is terminal: later events must not reveal the row again.
             row.deleted_at = event_time or datetime.now(timezone.utc)
             if event_time is not None:
                 row.github_state_updated_at = event_time
-        return _finish(db, row, commit=commit)
+        return _finish(db, row, commit=commit, created=created)
 
     if row is None:
         row = Issue(
@@ -176,38 +179,39 @@ def upsert_from_webhook(
             branch_name=f"issue/{number}",
         )
         db.add(row)
-    elif row.deleted_at is not None:
+        return _finish(db, row, commit=commit, created=True)
+    if row.deleted_at is not None:
         # Soft-deleted rows are terminal; ignore late Issue events.
-        return _finish(db, row, commit=commit)
-    else:
-        if action in CONTENT_ACTIONS and _event_wins(row.github_updated_at, event_time):
-            row.github_issue_id = github_issue_id
-            row.title = title
-            row.body = body or ""
-            row.html_url = html_url
-            row.author_login = author_login
-            row.label_names = label_names
-            if github_issue_type_set:
-                row.github_issue_type = github_issue_type
-            if event_time is not None:
-                row.github_updated_at = event_time
-            if not kind_locked(row.status) and row.status in EARLY_STATUSES:
-                # only remap kind/status while still early
-                row.kind = kind
-                row.status = status
+        return _finish(db, row, commit=commit, created=False)
 
-        if action in STATE_ACTIONS and _event_wins(row.github_state_updated_at, event_time):
-            if action == "closed":
-                target_state = "closed"
-            elif action == "reopened":
-                target_state = "open"
-            else:
-                target_state = github_state
-            row.github_state = target_state
-            if event_time is not None:
-                row.github_state_updated_at = event_time
+    if action in CONTENT_ACTIONS and _event_wins(row.github_updated_at, event_time):
+        row.github_issue_id = github_issue_id
+        row.title = title
+        row.body = body or ""
+        row.html_url = html_url
+        row.author_login = author_login
+        row.label_names = label_names
+        if github_issue_type_set:
+            row.github_issue_type = github_issue_type
+        if event_time is not None:
+            row.github_updated_at = event_time
+        if not kind_locked(row.status) and row.status in EARLY_STATUSES:
+            # only remap kind/status while still early
+            row.kind = kind
+            row.status = status
 
-    return _finish(db, row, commit=commit)
+    if action in STATE_ACTIONS and _event_wins(row.github_state_updated_at, event_time):
+        if action == "closed":
+            target_state = "closed"
+        elif action == "reopened":
+            target_state = "open"
+        else:
+            target_state = github_state
+        row.github_state = target_state
+        if event_time is not None:
+            row.github_state_updated_at = event_time
+
+    return _finish(db, row, commit=commit, created=False)
 
 
 def list_all_for_repo(db: Session, repository_id: int) -> list[Issue]:

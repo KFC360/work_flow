@@ -22,6 +22,7 @@
 - Issue 详情可轮询任务日志尾部；Worker 心跳：`logs/worker-heartbeat.json`。
 - Worker 内置 OpenCode skills：`agent_skills/`（`documentation`、`ui-ux-pro-max`、`karpathy-guidelines`），部署挂到 `~/.config/opencode/skills`，不写进目标仓。
 - 设置页管理全站代理与邮件发件（非密钥）；SMTP 密码只走环境变量 `SMTP_PASSWORD`，页面只显示「已配置 / 未配置」，试发使用已保存配置。
+- 仓库页可配多名新 Issue 收件人；Issue 首次入库时通知一次（Webhook / 全量同步共用）。全量同步历史数据前请先留空收件人。
 
 ## 文档索引
 

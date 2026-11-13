@@ -10,6 +10,7 @@ from app.crud import issue as issue_crud
 from app.crud import job as job_crud
 from app.crud import repository as repository_crud
 from app.services.github_api import GitHubAPIError, GitHubClient
+from app.services.issue_notify import maybe_notify_new_issue
 from app.services.pr_sync import apply_pull_request_event
 
 SUPPORTED_ISSUE_ACTIONS = {
@@ -176,7 +177,7 @@ def apply_issue_action(db: Session, repo_id: int, payload: dict[str, Any]) -> bo
         return False
     issue = payload.get("issue") or {}
     user = issue.get("user") or {}
-    row = issue_crud.upsert_from_webhook(
+    row, created = issue_crud.upsert_from_webhook(
         db,
         repository_id=repo_id,
         github_issue_id=int(issue["id"]),
@@ -195,6 +196,9 @@ def apply_issue_action(db: Session, repo_id: int, payload: dict[str, Any]) -> bo
     if action == "closed" and row.github_state == "closed" and row.deleted_at is None:
         # A stale closed event after a newer reopened must not cancel work.
         job_crud.cancel_queued_for_issue(db, row.id)
+    repo = repository_crud.get(db, repo_id)
+    if repo is not None:
+        maybe_notify_new_issue(db, repo, row, created=created)
     return True
 
 
@@ -221,7 +225,7 @@ def refresh_issue_from_github(
         raise GitHubAPIError("issue identity mismatch", status_code=409)
 
     user = payload.get("user") or {}
-    return issue_crud.upsert_from_webhook(
+    row, _created = issue_crud.upsert_from_webhook(
         db,
         repository_id=issue.repository_id,
         github_issue_id=payload["id"],
@@ -237,6 +241,7 @@ def refresh_issue_from_github(
         github_issue_type=issue_type_name(payload.get("type")),
         github_issue_type_set=("type" in payload),
     )
+    return row
 
 
 def process_issue_delivery(

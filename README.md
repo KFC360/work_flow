@@ -79,6 +79,7 @@ mail:
 - 业务代码复用 `app/services/mail.py` 的 `send_mail(to, subject, html_body, *, text_fallback=None)`；HTML 在发送入口按白名单消毒，失败抛 `MailError`。
 - 未启用、缺主机 / 端口 / 发件人、缺 `SMTP_PASSWORD` 或收件人时返回明确短消息；SMTP 原始异常只写日志。
 - 网易邮箱（163/126 等）请用 **465 + SSL**；发件人须与 SMTP 用户名同为完整邮箱，密码为授权码。
+- 仓库页可配置多名「新 Issue 收件人」：Issue 经 Webhook 或全量同步**首次入库**时发一封通知（同一 Issue 只成功发一次）。邮件关闭或收件人为空则跳过，失败不阻断同步。建议先全量同步历史 Issue，再填写收件人，避免群发。可选 `APP_PUBLIC_BASE_URL` 在邮件中附带本系统深链。
 
 ## 生产部署
 

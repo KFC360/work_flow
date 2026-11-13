@@ -92,7 +92,7 @@ def test_write_doc_success(db: Session, tmp_path: Path, monkeypatch) -> None:
     repo.local_path = str(repo_dir)
     repo.doc_dir = "docs"
     db.commit()
-    issue = issue_crud.upsert_from_webhook(
+    issue, _ = issue_crud.upsert_from_webhook(
         db,
         repository_id=repo.id,
         github_issue_id=9,
@@ -230,7 +230,7 @@ def test_write_doc_accepts_nonzero_exit_when_doc_valid(
     repo.local_path = str(repo_dir)
     repo.doc_dir = "docs"
     db.commit()
-    issue = issue_crud.upsert_from_webhook(
+    issue, _ = issue_crud.upsert_from_webhook(
         db,
         repository_id=repo.id,
         github_issue_id=91,

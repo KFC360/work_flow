@@ -27,6 +27,12 @@ class Repository(Base):
     private: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     local_path: Mapped[str | None] = mapped_column(String(1024), unique=True, nullable=True)
     doc_dir: Mapped[str] = mapped_column(String(255), nullable=False, default="docs", server_default="docs")
+    notify_emails: Mapped[list[str]] = mapped_column(
+        ARRAY(String(320)),
+        nullable=False,
+        default=list,
+        server_default="{}",
+    )
     synced_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     sync_error: Mapped[str | None] = mapped_column(Text, nullable=True)
     language: Mapped[str | None] = mapped_column(String(100), nullable=True)

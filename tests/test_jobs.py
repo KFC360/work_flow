@@ -35,7 +35,7 @@ def test_cancel_queued_on_close(db: Session) -> None:
         default_branch="main",
         private=False,
     )
-    issue = issue_crud.upsert_from_webhook(
+    issue, _ = issue_crud.upsert_from_webhook(
         db,
         repository_id=repo.id,
         github_issue_id=1,
@@ -78,7 +78,7 @@ def test_recover_running(db: Session) -> None:
         default_branch="main",
         private=False,
     )
-    issue = issue_crud.upsert_from_webhook(
+    issue, _ = issue_crud.upsert_from_webhook(
         db,
         repository_id=repo.id,
         github_issue_id=2,

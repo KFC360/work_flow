@@ -14,6 +14,7 @@ from app.models.issue import Issue
 from app.models.repository import Repository
 from app.services.github_api import GitHubAPIError
 from app.services.ingest import issue_type_name, label_names_from_payload
+from app.services.issue_notify import maybe_notify_new_issue
 from app.services.pr_sync import apply_pull_request_snapshot, parse_dt
 
 # Per_page drives both the request and the "last page" stop condition.
@@ -133,7 +134,7 @@ def _write_remote_issue(
 
     user = item.get("user") or {}
     was_closed = local is not None and local.github_state == "closed"
-    row = issue_crud.upsert_from_webhook(
+    row, created = issue_crud.upsert_from_webhook(
         db,
         repository_id=repo.id,
         github_issue_id=issue_id,
@@ -156,6 +157,9 @@ def _write_remote_issue(
         result.updated += 1
     if not was_closed and row.github_state == "closed" and row.deleted_at is None:
         job_crud.cancel_queued_for_issue(db, row.id, commit=False)
+    # Flush first so issue.id is available; outer sync commits once at the end.
+    db.flush()
+    maybe_notify_new_issue(db, repo, row, created=created, commit=False)
 
 
 def _soft_delete_missing(

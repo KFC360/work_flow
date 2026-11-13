@@ -58,7 +58,10 @@ REPOS_ROOT=/home/linuxuser/repos
 
 ```bash
 # 2.1 导出（在宿主机）
-pg_dump -U github_workflow -Fc github_workflow -f /tmp/gw.dump
+# 本机 socket 默认 peer：用 postgres 系统用户导出；重定向由当前 shell 写文件，避免 /tmp 属主权限问题。
+sudo -u postgres pg_dump -Fc github_workflow > /tmp/gw.dump
+# 或 TCP + 密码：
+# pg_dump -h 127.0.0.1 -U github_workflow -Fc github_workflow > /tmp/gw.dump
 
 # 2.2 只起 Compose 里的 Postgres
 cd /home/linuxuser/sites/work_flow
@@ -80,11 +83,20 @@ pg_dump -U github_workflow github_workflow -f /tmp/gw.sql
 docker compose exec -T db psql -U github_workflow -d github_workflow < /tmp/gw.sql
 ```
 
-灌完后可在宿主机用映射口核对（只绑了本机）：
+灌完后用 Compose 映射口核对（**不是**宿主机 5432 socket）：
 
 ```bash
-psql "postgresql://github_workflow:你的密码@127.0.0.1:55438/github_workflow" -c '\dt'
+# compose.yaml 里默认库密码是 github_workflow（与宿主机旧密码可能不同）
+# .env 的 DATABASE_URL 密码必须与此一致，否则 Web/Worker 连不上 db
+docker compose exec db \
+  psql -U github_workflow -d github_workflow -c '\dt'
+docker compose exec db \
+  psql -U github_workflow -d github_workflow -c 'SELECT count(*) FROM alembic_version;'
 ```
+
+若 `.env` 里仍是宿主机旧密码（例如 `123456`），改成与 Compose 一致：
+
+`DATABASE_URL=postgresql+psycopg://github_workflow:github_workflow@db:5432/github_workflow`
 
 ---
 

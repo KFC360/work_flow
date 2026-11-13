@@ -42,6 +42,7 @@ class Settings:
     opencode_args: str
     config_yaml_path: Path
     agent_test_db_enabled: bool
+    app_public_base_url: str
 
 
 def _env_bool(name: str, default: bool) -> bool:
@@ -73,4 +74,5 @@ def get_settings() -> Settings:
         opencode_args=_env("OPENCODE_ARGS"),
         config_yaml_path=PROJECT_ROOT / "config.yaml",
         agent_test_db_enabled=_env_bool("AGENT_TEST_DB_ENABLED", True),
+        app_public_base_url=_env("APP_PUBLIC_BASE_URL").rstrip("/"),
     )

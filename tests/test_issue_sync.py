@@ -65,7 +65,7 @@ def _seed_issue(
     github_updated_at: datetime = OLD_UPDATED_AT,
     github_issue_type: str | None = None,
 ):
-    issue = issue_crud.upsert_from_webhook(
+    issue, _ = issue_crud.upsert_from_webhook(
         db,
         repository_id=repo.id,
         github_issue_id=github_issue_id or (5000 + number),

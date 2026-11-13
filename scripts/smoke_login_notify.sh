@@ -4,7 +4,7 @@
 # Runs inside the official Playwright Docker image so the host does not need
 # Chromium system libraries (libatk, etc.). Requires docker (same as deploy).
 #
-# Override image: PLAYWRIGHT_IMAGE=mcr.microsoft.com/playwright:v1.65.1-jammy
+# Override image: PLAYWRIGHT_IMAGE=mcr.microsoft.com/playwright:v1.65.0-jammy
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -28,8 +28,8 @@ set -a
 source .env
 set +a
 
-# Keep in sync with playwright version in pyproject optional extra `smoke`
-PLAYWRIGHT_IMAGE="${PLAYWRIGHT_IMAGE:-mcr.microsoft.com/playwright:v1.65.1-jammy}"
+# MCR has v1.65.0-jammy (no v1.65.1-jammy); pin matches pyproject smoke extra.
+PLAYWRIGHT_IMAGE="${PLAYWRIGHT_IMAGE:-mcr.microsoft.com/playwright:v1.65.0-jammy}"
 mkdir -p logs/smoke
 
 echo "==> smoke via ${PLAYWRIGHT_IMAGE}"

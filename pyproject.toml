@@ -27,7 +27,8 @@ dev = [
   "pytest-asyncio>=0.24.0",
 ]
 smoke = [
-  "playwright>=1.49.0",
+  # Keep in sync with PLAYWRIGHT_IMAGE tag in scripts/smoke_login_notify.sh
+  "playwright==1.65.0",
 ]
 
 [build-system]

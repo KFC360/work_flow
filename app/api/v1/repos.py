@@ -85,6 +85,8 @@ def _repo_page_context(
     local_path: str | None = None,
     doc_dir: str | None = None,
     notify_emails: str | None = None,
+    notify_email_items: list[str] | None = None,
+    notify_enhance: bool | None = None,
     field_errors: dict[str, str] | None = None,
     form_disabled: bool | None = None,
     flash: str | None = None,
@@ -92,12 +94,17 @@ def _repo_page_context(
 ) -> dict:
     company = company_crud.get(db, repo.company_id)
     origin = inspect_origin(repo.local_path, repo.github_full_name)
+    errors = field_errors or {}
     if local_path is None:
         local_path = repo.local_path or ""
     if doc_dir is None:
         doc_dir = repo.doc_dir or "docs"
     if notify_emails is None:
         notify_emails = format_notify_emails(repo.notify_emails)
+    if notify_email_items is None:
+        notify_email_items = list(repo.notify_emails or [])
+    if notify_enhance is None:
+        notify_enhance = "notify_emails" not in errors
     if form_disabled is None:
         form_disabled = job_crud.has_active_for_repo(db, repo.id)
     return _ctx(
@@ -107,7 +114,9 @@ def _repo_page_context(
         local_path=local_path,
         doc_dir=doc_dir,
         notify_emails=notify_emails,
-        field_errors=field_errors or {},
+        notify_email_items=notify_email_items,
+        notify_enhance=notify_enhance,
+        field_errors=errors,
         form_disabled=form_disabled,
         origin=origin,
         origin_mismatch=origin.state == "mismatch",
@@ -164,7 +173,7 @@ def repo_save(
         return RedirectResponse("/", status_code=303)
     if job_crud.has_active_for_repo(db, repo.id):
         return RedirectResponse(
-            f"/repos/{repo_id}?flash=error&msg={quote('有进行中的任务，暂不可改路径')}",
+            f"/repos/{repo_id}?flash=error&msg={quote('有进行中的任务，暂不可改路径或收件人')}",
             status_code=303,
         )
     errors: dict[str, str] = {}
@@ -202,6 +211,10 @@ def repo_save(
                 local_path=local_path,
                 doc_dir=doc_dir,
                 notify_emails=notify_emails_raw,
+                notify_email_items=(
+                    list(repo.notify_emails or []) if email_error else parsed_emails
+                ),
+                notify_enhance=email_error is None,
                 field_errors=errors,
                 form_disabled=False,
             ),

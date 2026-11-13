@@ -3,6 +3,7 @@ from __future__ import annotations
 import subprocess
 from datetime import datetime, timezone
 from pathlib import Path
+from urllib.parse import unquote
 
 import pytest
 import yaml
@@ -12,6 +13,7 @@ from sqlalchemy.orm import Session
 from app.core.security import COOKIE_NAME, create_access_token, csrf_token_for_jti, decode_access_token
 from app.crud import company as company_crud
 from app.crud import issue as issue_crud
+from app.crud import job as job_crud
 from app.crud import repository as repository_crud
 from app.crud import user as user_crud
 from app.services.app_config import (
@@ -435,6 +437,63 @@ def test_repo_page_get_does_not_instantiate_github_client(
     resp = client.get(f"/repos/{repo.id}")
     assert resp.status_code == 200
     assert calls == []
+
+
+def test_repo_notify_emails_render_list_and_edit_hooks(client: TestClient, db: Session) -> None:
+    _login(client, db)
+    _company, repo = _seed_repo(db)
+    repo.notify_emails = ["ops@example.com", "dev@example.com"]
+    db.commit()
+
+    resp = client.get(f"/repos/{repo.id}")
+    assert resp.status_code == 200
+    text = resp.text
+    assert "ops@example.com" in text
+    assert "dev@example.com" in text
+    assert "data-gw-notify-list" in text
+    assert 'data-gw-notify-source' in text
+    assert 'data-gw-notify-input' in text
+    assert 'data-gw-notify-add-btn' in text
+    assert 'data-gw-notify-remove' in text
+    assert "一次添加一个邮箱" in text
+    assert "暂无收件人" in text
+
+
+def test_repo_notify_emails_empty_state(client: TestClient, db: Session) -> None:
+    _login(client, db)
+    _company, repo = _seed_repo(db)
+    repo.notify_emails = []
+    db.commit()
+
+    resp = client.get(f"/repos/{repo.id}")
+    assert resp.status_code == 200
+    text = resp.text
+    assert "暂无收件人" in text
+    assert "保存空列表后，新 Issue 不会发通知" in text
+
+
+def test_repo_save_blocked_by_active_job_keeps_notify_emails(client: TestClient, db: Session) -> None:
+    csrf = _login(client, db)
+    _company, repo = _seed_repo(db)
+    repo.notify_emails = ["ops@example.com"]
+    db.commit()
+    issue = _seed_issue(db, repo, number=1, kind="feature", status="recorded")
+    job_crud.enqueue(db, issue_id=issue.id, repository_id=repo.id, action="write_doc")
+
+    resp = client.post(
+        f"/repos/{repo.id}",
+        data={
+            "csrf_token": csrf,
+            "local_path": "",
+            "doc_dir": "docs",
+            "notify_emails": "new@example.com",
+        },
+        follow_redirects=False,
+    )
+    assert resp.status_code == 303
+    assert "收件人" in unquote(resp.headers["location"])
+    db.refresh(repo)
+    assert repo.notify_emails == ["ops@example.com"]
 
 
 def test_resync_failure_only_updates_sync_error(client: TestClient, db: Session, tmp_path: Path, monkeypatch) -> None:

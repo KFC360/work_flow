@@ -153,9 +153,16 @@ uv run pytest
 ```
 
 CI：`.github/workflows/ci.yml` — `pull_request` / `master` push 时跑 pytest。  
-CD：`.github/workflows/deploy.yml` — **PR 合并进 `master` 后** SSH 到服务器 `git pull` 并执行 `./scripts/docker_deploy.sh`。本系统只负责开到 PR；合并由人在 GitHub 完成，合并即触发 CD。
+CD：`.github/workflows/deploy.yml` — **PR 合并进 `master` 后** SSH 到服务器 `git pull`、执行 `./scripts/docker_deploy.sh`，成功后等待 30 秒再跑 `./scripts/smoke_login_notify.sh`（Playwright 登录 `SMOKE_BASE_URL`，邮件通知 `SMOKE_NOTIFY_TO`）。本系统只负责开到 PR；合并由人在 GitHub 完成，合并即触发 CD。
 
 CD 需在仓库 **Settings → Secrets and variables → Actions**（Repository secrets，不要只放在 Environment）配置：`DEPLOY_HOST`、`DEPLOY_USER`、`DEPLOY_SSH_KEY`、`DEPLOY_PATH`（可选 `DEPLOY_PORT`）。服务器账号需能对该目录 `git pull`，并免交互执行 `docker compose`。
+
+部署冒烟（服务器侧，读生产 `.env`，不额外占 GitHub Secrets）：
+
+1. `.env` 配置 `APP_ADMIN_USER` / `APP_ADMIN_PASSWORD`、`SMTP_PASSWORD`，以及 `SMOKE_NOTIFY_TO`（多个邮箱用逗号/分号/空白分隔；留空则只测登录不发信）
+2. 可选 `SMOKE_BASE_URL`（默认 `https://api.kfc360.xyz`）
+3. 首次在部署用户下安装浏览器：`uv sync --extra smoke && uv run playwright install chromium`（之后 CD 脚本也会尽量自检安装）
+4. 登录失败或邮件发送失败会使 CD job 失败；失败截图在 `logs/smoke/`
 
 ## 目录
 

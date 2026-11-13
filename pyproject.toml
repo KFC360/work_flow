@@ -26,6 +26,9 @@ dev = [
   "pytest>=8.3.3",
   "pytest-asyncio>=0.24.0",
 ]
+smoke = [
+  "playwright>=1.49.0",
+]
 
 [build-system]
 requires = ["hatchling"]

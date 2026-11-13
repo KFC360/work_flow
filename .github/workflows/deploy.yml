@@ -56,5 +56,10 @@ jobs:
             echo "==> docker_deploy"
             ./scripts/docker_deploy.sh
             echo "==> deploy ok $(git rev-parse --short HEAD)"
+            echo "==> smoke wait 30s"
+            sleep 30
+            chmod +x ./scripts/smoke_login_notify.sh
+            echo "==> smoke_login_notify"
+            ./scripts/smoke_login_notify.sh
         env:
           DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}

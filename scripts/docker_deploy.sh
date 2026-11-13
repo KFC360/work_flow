@@ -41,6 +41,7 @@ mkdir -p \
   "${HOST_HOME}/.opencode" \
   "${HOST_HOME}/.config/opencode" \
   "${HOST_HOME}/.local" \
+  "${HOST_HOME}/.ssh" \
   "${HOST_HOME}/.claude" \
   "${HOST_HOME}/.config/claude"
 

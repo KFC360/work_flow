@@ -69,6 +69,8 @@ services:
       - ${HOST_HOME:-/home/linuxuser}/.opencode:${HOST_HOME:-/home/linuxuser}/.opencode
       - ${HOST_HOME:-/home/linuxuser}/.config/opencode:${HOST_HOME:-/home/linuxuser}/.config/opencode
       - ${HOST_HOME:-/home/linuxuser}/.local:${HOST_HOME:-/home/linuxuser}/.local
+      # SSH remotes (git@github.com:...) need host keys + known_hosts inside the worker
+      - ${HOST_HOME:-/home/linuxuser}/.ssh:${HOST_HOME:-/home/linuxuser}/.ssh
       # Optional Claude Code dirs (create empty on host if unused)
       - ${HOST_HOME:-/home/linuxuser}/.claude:${HOST_HOME:-/home/linuxuser}/.claude
       - ${HOST_HOME:-/home/linuxuser}/.config/claude:${HOST_HOME:-/home/linuxuser}/.config/claude

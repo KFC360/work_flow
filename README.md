@@ -133,6 +133,7 @@ test -f /home/linuxuser/repos/work_flow/docs/architecture/design.md && echo ok
 
 - Worker **必须**能 `exec` 到宿主机同路径的 `opencode`/`claude`；升级 CLI 仍在宿主机做
 - `local_path`、`WORKTREE_ROOT` 在容器内外路径必须一致（bind mount 同 path）
+- 若仓库 `origin` 是 `git@github.com:...`，镜像需含 `openssh-client`，并把宿主机 `${HOST_HOME}/.ssh` 挂进 Worker（含可用私钥与 `known_hosts`）
 - **不要** `docker compose up --scale worker=2`
 - 改 `.env` / `config.yaml` 后：`docker compose up -d`（或 `./scripts/docker_deploy.sh`）重启对应服务
 

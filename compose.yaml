@@ -13,8 +13,9 @@ x-app: &app
     context: .
     dockerfile: Dockerfile
   image: github-workflow:local
-  # Start as root so entrypoint can synthesize /etc/passwd for HOST_UID (SSH needs it),
-  # then gosu down to HOST_UID:HOST_GID.
+  # Force root so entrypoint can write /etc/passwd for HOST_UID (SSH getpwuid),
+  # then gosu down to HOST_UID:HOST_GID. Do not set user: to the host uid.
+  user: "0:0"
   restart: unless-stopped
   env_file:
     - path: .env
